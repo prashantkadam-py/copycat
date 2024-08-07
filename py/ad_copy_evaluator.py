@@ -297,25 +297,18 @@ def evaluate_ad_copy(
   Raises:
     RuntimeError: If the vector store does not have an embeddings attribute.
   """
-  keywords_embedding = ad_copy_vectorstore.vectorstore.embeddings.embed_query(
-      keywords
-  )
-  ad_embedding = ad_copy_vectorstore.vectorstore.embeddings.embed_documents(
-      [str(google_ad)]
-  )[0]
+  keywords_embedding = ad_copy_vectorstore.embed_queries([keywords])[0]
+  ad_embedding = ad_copy_vectorstore.embed_documents([str(google_ad)])[0]
 
   keyword_similarity = _normalize_cosine_similarity(
       pairwise.cosine_similarity([keywords_embedding], [ad_embedding])[0][0]
   )
 
-  relevant_ads = ad_copy_vectorstore.get_relevant_ads(
-      str(google_ad), k=5, lambda_mult=1.0
+  relevant_ads = ad_copy_vectorstore.get_relevant_ads([str(google_ad)], k=5)[0]
+  similar_training_ad_embeddings = ad_copy_vectorstore.embed_documents(
+      [str(example.google_ad) for example in relevant_ads]
   )
-  similar_training_ad_embeddings = (
-      ad_copy_vectorstore.vectorstore.embeddings.embed_documents(
-          [str(ad) for _, ad in relevant_ads]
-      )
-  )
+
   style_similarity = _normalize_cosine_similarity(
       pairwise.cosine_similarity(
           similar_training_ad_embeddings, [ad_embedding]

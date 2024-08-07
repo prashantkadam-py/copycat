@@ -15,15 +15,12 @@
 """Models used for testing, which don't require a real VertexAI call."""
 
 from typing import Any, Callable
+
+from google.cloud.aiplatform.vertexai import language_models
 from google.cloud.aiplatform.vertexai.generative_models import _generative_models as generative_models
-from langchain_core import embeddings as langchain_embeddings
 import mock
 import numpy as np
-
-# Embedding dimension matches vertex AI:
-# https://cloud.google.com/vertex-ai/generative-ai/docs/model-reference/text-embeddings
-EMBEDDING_DIMENSIONS = 768
-
+import pandas as pd
 
 from copycat.py import ad_copy_generator
 from copycat.py import copycat
@@ -38,27 +35,24 @@ GenerationResponse = generative_models.GenerationResponse
 ContentsType = generative_models.ContentsType
 
 
-def _random_embedding(text: str) -> list[float]:
-  seed = int.from_bytes(text.encode("utf-8"), byteorder="big")
-  return np.random.default_rng(seed).normal(size=EMBEDDING_DIMENSIONS).tolist()
+def _random_embedding(
+    text: language_models.TextEmbeddingInput, output_dimensionality: int
+) -> language_models.TextEmbedding:
+  seed = int.from_bytes(
+      (text.text + text.task_type).encode("utf-8"), byteorder="big"
+  )
+  embeddings = (
+      np.random.default_rng(seed).normal(size=output_dimensionality).tolist()
+  )
+  return language_models.TextEmbedding(
+      values=embeddings,
+  )
 
 
-class MockVertexAIEmbeddings:
-  """Creates dummy embeddings with the same shape as the input."""
-
-  def __init__(self, model_name: str = "test-model"):
-    pass
-
-  def embed_documents(
-      self, texts: list[str], batch_size: int = 0
-  ) -> list[list[float]]:
-    return list(map(_random_embedding, texts))
-
-  def embed_query(self, text: str) -> list[float]:
-    return _random_embedding(text)
-
-  def __eq__(self, value: Any) -> bool:
-    return isinstance(value, self.__class__)
+def random_embeddings(
+    texts: list[language_models.TextEmbeddingInput], output_dimensionality: int
+) -> list[language_models.TextEmbedding]:
+  return list(map(lambda x: _random_embedding(x, output_dimensionality), texts))
 
 
 class PatchEmbeddingsModel:
@@ -84,34 +78,21 @@ class PatchEmbeddingsModel:
   """
 
   def __init__(self):
-    self.embedding_model_init_patcher = mock.patch(
-        "google3.third_party.professional_services.solutions.copycat.py.models.langchain_google_vertexai.VertexAIEmbeddings.__init__",
-        new=MockVertexAIEmbeddings.__init__,
+    self.mock_embeddings_model = mock.MagicMock(
+        spec=language_models.TextEmbeddingModel
     )
 
-    self.embedding_model_embed_documents_patcher = mock.patch(
-        "google3.third_party.professional_services.solutions.copycat.py.models.langchain_google_vertexai.VertexAIEmbeddings.embed_documents",
-        new=MockVertexAIEmbeddings.embed_documents,
-    )
-
-    self.embedding_model_embed_query_patcher = mock.patch(
-        "google3.third_party.professional_services.solutions.copycat.py.models.langchain_google_vertexai.VertexAIEmbeddings.embed_query",
-        new=MockVertexAIEmbeddings.embed_query,
+    self.mock_embeddings_model.get_embeddings.side_effect = random_embeddings
+    self._from_pretrained_patcher = mock.patch(
+        "google.cloud.aiplatform.vertexai.language_models.TextEmbeddingModel.from_pretrained",
+        return_value=self.mock_embeddings_model,
     )
 
   def start(self):
-    self.mock_embedding_model_init = self.embedding_model_init_patcher.start()
-    self.mock_embedding_model_embed_documents = (
-        self.embedding_model_embed_documents_patcher.start()
-    )
-    self.mock_embedding_model_embed_query = (
-        self.embedding_model_embed_query_patcher.start()
-    )
+    self.mock_from_pretrained = self._from_pretrained_patcher.start()
 
   def stop(self):
-    self.embedding_model_init_patcher.stop()
-    self.embedding_model_embed_documents_patcher.stop()
-    self.embedding_model_embed_query_patcher.stop()
+    self._from_pretrained_patcher.stop()
 
   def __call__(
       self, test_function: Callable[[Any], Any]
@@ -265,25 +246,27 @@ def vectorstore_instances_are_equal(
   if not isinstance(ad_copy_vectorstore_2, ad_copy_generator.AdCopyVectorstore):
     return False
 
-  vectorstore_1 = ad_copy_vectorstore_1.vectorstore
-  vectorstore_2 = ad_copy_vectorstore_2.vectorstore
   params_1 = {
-      "persist_path": ad_copy_vectorstore_1.persist_path,
+      "embedding_model_name": ad_copy_vectorstore_1.embedding_model_name.value,
+      "dimensionality": ad_copy_vectorstore_1.dimensionality,
+      "embeddings_batch_size": ad_copy_vectorstore_1.embeddings_batch_size,
   }
   params_2 = {
-      "persist_path": ad_copy_vectorstore_2.persist_path,
+      "embedding_model_name": ad_copy_vectorstore_2.embedding_model_name.value,
+      "dimensionality": ad_copy_vectorstore_2.dimensionality,
+      "embeddings_batch_size": ad_copy_vectorstore_2.embeddings_batch_size,
   }
 
   if not values_are_equal(params_1, params_2):
     return False
 
-  if not values_are_equal(vectorstore_1._embeddings, vectorstore_2._embeddings):
-    return False
-
-  if not values_are_equal(vectorstore_1._texts, vectorstore_2._texts):
-    return False
-
-  if not values_are_equal(vectorstore_1._metadatas, vectorstore_2._metadatas):
+  try:
+    pd.testing.assert_frame_equal(
+        ad_copy_vectorstore_1.ad_exemplars,
+        ad_copy_vectorstore_2.ad_exemplars,
+        check_like=True,
+    )
+  except AssertionError:
     return False
 
   return True
@@ -310,15 +293,6 @@ def copycat_instances_are_equal(
   if not vectorstore_instances_are_equal(
       copycat_1.ad_copy_vectorstore, copycat_2.ad_copy_vectorstore
   ):
-    return False
-
-  if copycat_1.unique_headlines != copycat_2.unique_headlines:
-    return False
-
-  if copycat_1.unique_descriptions != copycat_2.unique_descriptions:
-    return False
-
-  if copycat_1.persist_path != copycat_2.persist_path:
     return False
 
   if copycat_1.ad_format != copycat_2.ad_format:

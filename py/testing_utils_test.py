@@ -15,9 +15,9 @@
 from absl.testing import absltest
 from absl.testing import parameterized
 from google.cloud.aiplatform.vertexai import generative_models
+from google.cloud.aiplatform.vertexai import language_models
 import pandas as pd
 
-from copycat.py import models
 from copycat.py import testing_utils
 
 
@@ -27,42 +27,60 @@ copycat = testing_utils.copycat
 
 class PatchEmbeddingsModelTest(parameterized.TestCase):
 
+  def setUp(self):
+    super().setUp()
+    self.input_texts = [
+        language_models.TextEmbeddingInput(
+            text="Test 1", task_type="RETRIEVAL_DOCUMENT"
+        ),
+        language_models.TextEmbeddingInput(
+            text="Test 2", task_type="RETRIEVAL_DOCUMENT"
+        ),
+    ]
+
   @testing_utils.PatchEmbeddingsModel()
-  def test_embed_documents_returns_list_of_embeddings(
+  def test_get_embeddings_returns_list_of_embeddings(
       self, embeddings_model_patcher
   ):
-    model = models.BatchedVertexAIEmbeddings()
-    doc_embeddings = model.embed_documents(["Test 1", "Test 2"])
+    model = language_models.TextEmbeddingModel.from_pretrained("test_model")
+    doc_embeddings = model.get_embeddings(
+        self.input_texts, output_dimensionality=768
+    )
+    doc_embeddings = [emb.values for emb in doc_embeddings]
 
     self.assertLen(doc_embeddings, 2)
     self.assertLen(doc_embeddings[0], 768)
     self.assertLen(doc_embeddings[1], 768)
 
   @testing_utils.PatchEmbeddingsModel()
-  def test_embed_query_returns_a_single_embedding(
-      self, embeddings_model_patcher
-  ):
-    model = models.BatchedVertexAIEmbeddings()
-    query_embedding = model.embed_query("Test 1")
-    self.assertLen(query_embedding, 768)
-
-  @testing_utils.PatchEmbeddingsModel()
   def test_embeddings_are_deterministic(self, embeddings_model_patcher):
-    model = models.BatchedVertexAIEmbeddings()
-    doc_embeddings = model.embed_documents(["Test 1", "Test 2"])
-    doc_embeddings_2 = model.embed_documents(["Test 1", "Test 2"])
+    model = language_models.TextEmbeddingModel.from_pretrained("test_model")
+    doc_embeddings = model.get_embeddings(
+        self.input_texts, output_dimensionality=768
+    )
+    doc_embeddings_2 = model.get_embeddings(
+        self.input_texts, output_dimensionality=768
+    )
+    doc_embeddings = [emb.values for emb in doc_embeddings]
+    doc_embeddings_2 = [emb.values for emb in doc_embeddings_2]
     self.assertSequenceEqual(doc_embeddings, doc_embeddings_2)
 
   @testing_utils.PatchEmbeddingsModel()
   def test_embeddings_depend_on_text_input(self, embeddings_model_patcher):
-    model = models.BatchedVertexAIEmbeddings()
-    doc_embeddings = model.embed_documents(["Test 1", "Test 2"])
+    model = language_models.TextEmbeddingModel.from_pretrained("test_model")
+    doc_embeddings = model.get_embeddings(
+        self.input_texts, output_dimensionality=768
+    )
+    doc_embeddings = [emb.values for emb in doc_embeddings]
     self.assertNotEqual(doc_embeddings[0], doc_embeddings[1])
 
   def test_patch_works_as_a_context_manager(self):
     with testing_utils.PatchEmbeddingsModel() as embeddings_model_patcher:
-      model = models.BatchedVertexAIEmbeddings()
-      doc_embeddings = model.embed_documents(["Test 1", "Test 2"])
+      model = language_models.TextEmbeddingModel.from_pretrained("test_model")
+      doc_embeddings = model.get_embeddings(
+          self.input_texts, output_dimensionality=768
+      )
+      doc_embeddings = [emb.values for emb in doc_embeddings]
       self.assertLen(doc_embeddings, 2)
       self.assertLen(doc_embeddings[0], 768)
       self.assertLen(doc_embeddings[1], 768)
@@ -168,7 +186,9 @@ class ValuesAreEqualTest(parameterized.TestCase):
   @parameterized.parameters(
       (None, True),
       ("training_data", False),
-      ("persist_path", False),
+      ("embedding_model_name", False),
+      ("dimensionality", False),
+      ("embeddings_batch_size", False),
   )
   def test_vectorstore_instances_are_equal(self, different_param, expected):
     params_1 = dict(
@@ -177,8 +197,12 @@ class ValuesAreEqualTest(parameterized.TestCase):
             "descriptions": [["description 1"], ["description 2"]],
             "keywords": ["keyword 1", "keyword 2"],
         }),
-        embedding_model_name="textembedding-gecko",
-        persist_path="tmp",
+        embedding_model_name="text-embedding-004",
+        dimensionality=256,
+        max_initial_ads=10,
+        max_exemplar_ads=10,
+        affinity_preference=-1,
+        embeddings_batch_size=50,
     )
 
     params_2 = params_1.copy()
@@ -189,8 +213,12 @@ class ValuesAreEqualTest(parameterized.TestCase):
               "descriptions": [["description 1"], ["description 2"]],
               "keywords": ["keyword 1", "keyword 5"],
           }),
-          persist_path="tmp2",
-          ad_format="text_ad",
+          embedding_model_name="text-multilingual-embedding-002",
+          dimensionality=500,
+          max_initial_ads=20,
+          max_exemplar_ads=30,
+          affinity_preference=-2,
+          embeddings_batch_size=100,
       )[different_param]
 
     vectorstore_1 = ad_copy_generator.AdCopyVectorstore.create_from_pandas(
@@ -217,8 +245,12 @@ class ValuesAreEqualTest(parameterized.TestCase):
             "descriptions": [["description 1"], ["description 2"]],
             "keywords": ["keyword 1", "keyword 2"],
         }),
-        embedding_model_name="textembedding-gecko",
-        persist_path="tmp",
+        embedding_model_name="text-embedding-004",
+        dimensionality=256,
+        max_initial_ads=10,
+        max_exemplar_ads=10,
+        affinity_preference=-1,
+        embeddings_batch_size=50,
     )
     not_a_vectorstore = "not a vectorstore"
     self.assertFalse(
@@ -235,8 +267,10 @@ class ValuesAreEqualTest(parameterized.TestCase):
   @parameterized.parameters(
       (None, True),
       ("training_data", False),
-      ("persist_path", False),
+      ("embedding_model_name", False),
       ("ad_format", False),
+      ("embedding_model_dimensionality", False),
+      ("embedding_model_batch_size", False),
   )
   def test_copycat_instances_are_equal(self, different_param, expected):
     params_1 = dict(
@@ -251,8 +285,7 @@ class ValuesAreEqualTest(parameterized.TestCase):
             ],
             "keywords": ["keyword 1", "keyword 2"],
         }),
-        embedding_model_name="textembedding-gecko",
-        persist_path="tmp",
+        embedding_model_name="text-embedding-004",
         ad_format="text_ad",
     )
 
@@ -270,8 +303,13 @@ class ValuesAreEqualTest(parameterized.TestCase):
               ],
               "keywords": ["keyword 1", "keyword 2"],
           }),
-          persist_path="tmp2",
+          embedding_model_name="text-multilingual-embedding-002",
           ad_format="responsive_search_ad",
+          embedding_model_dimensionality=500,
+          vectorstore_max_initial_ads=20,
+          vectorstore_max_exemplar_ads=30,
+          vectorstore_affinity_preference=-2,
+          embedding_model_batch_size=100,
       )[different_param]
 
     copycat_1 = copycat.Copycat.create_from_pandas(**params_1)
@@ -292,9 +330,13 @@ class ValuesAreEqualTest(parameterized.TestCase):
             "descriptions": [["description 1"], ["description 2"]],
             "keywords": ["keyword 1", "keyword 2"],
         }),
-        embedding_model_name="textembedding-gecko",
-        persist_path="tmp",
+        embedding_model_name="text-embedding-004",
         ad_format="text_ad",
+        embedding_model_dimensionality=256,
+        vectorstore_max_initial_ads=10,
+        vectorstore_max_exemplar_ads=10,
+        vectorstore_affinity_preference=-1,
+        embedding_model_batch_size=50,
     )
 
     not_copycat = "not a copycat instance"

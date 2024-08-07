@@ -94,9 +94,9 @@ class CopycatTest(parameterized.TestCase):
   ):
     copycat_instance = copycat.Copycat.create_from_pandas(
         training_data=self.training_data(n_rows=3),
-        embedding_model_name="textembedding-gecko",
-        persist_path=self.tmp_dir.full_path,
+        embedding_model_name="text-embedding-004",
         ad_format="text_ad",
+        vectorstore_exemplar_selection_method="random",
     )
 
     self.assertIsInstance(copycat_instance, copycat.Copycat)
@@ -106,35 +106,35 @@ class CopycatTest(parameterized.TestCase):
   ):
     copycat_instance = copycat.Copycat.create_from_pandas(
         training_data=self.training_data(n_rows=3),
-        embedding_model_name="textembedding-gecko",
-        persist_path=self.tmp_dir.full_path,
+        embedding_model_name="text-embedding-004",
         ad_format="text_ad",
+        vectorstore_exemplar_selection_method="random",
     )
 
     # Will return all the entries because we only had 3 rows in the training
     # data.
     vectorstore_results = copycat_instance.ad_copy_vectorstore.get_relevant_ads(
-        "query", k=3
-    )
+        ["query"], k=3
+    )[0]
 
     expected_vectorstore_results = [
-        (
-            "keyword 1a, keyword 1b",
-            google_ads.GoogleAd(
+        copycat.ad_copy_generator.ExampleAd(
+            keywords="keyword 1a, keyword 1b",
+            google_ad=google_ads.GoogleAd(
                 headlines=["train headline 1", "train headline 1 (2)"],
                 descriptions=["train description 1"],
             ),
         ),
-        (
-            "keyword 2a, keyword 2b",
-            google_ads.GoogleAd(
+        copycat.ad_copy_generator.ExampleAd(
+            keywords="keyword 2a, keyword 2b",
+            google_ad=google_ads.GoogleAd(
                 headlines=["train headline 2", "train headline 2 (2)"],
                 descriptions=["train description 2"],
             ),
         ),
-        (
-            "keyword 3a, keyword 3b",
-            google_ads.GoogleAd(
+        copycat.ad_copy_generator.ExampleAd(
+            keywords="keyword 3a, keyword 3b",
+            google_ad=google_ads.GoogleAd(
                 headlines=["train headline 3", "train headline 3 (2)"],
                 descriptions=["train description 3"],
             ),
@@ -142,7 +142,7 @@ class CopycatTest(parameterized.TestCase):
     ]
     self.assertCountEqual(vectorstore_results, expected_vectorstore_results)
 
-  def test_create_from_pandas_on_invalid_ad_is_skip_ignores_invalid_ds(self):
+  def test_create_from_pandas_on_invalid_ad_is_skip_ignores_invalid_ads(self):
     training_data = pd.DataFrame.from_records([
         {
             "headlines": ["a" * 31, "invalid headline"],
@@ -163,15 +163,18 @@ class CopycatTest(parameterized.TestCase):
     ):
       copycat_instance = copycat.Copycat.create_from_pandas(
           training_data=training_data,
-          embedding_model_name="textembedding-gecko",
-          persist_path=self.tmp_dir.full_path,
+          embedding_model_name="text-embedding-004",
           ad_format="text_ad",
           on_invalid_ad="skip",
+          vectorstore_exemplar_selection_method="random",
       )
 
-    self.assertContainsSubset(
-        {"a" * 31, "invalid headline", "invalid description 1"},
-        set(copycat_instance.ad_copy_vectorstore.vectorstore._texts),
+    pd.testing.assert_frame_equal(
+        copycat_instance.ad_copy_vectorstore.ad_exemplars[
+            ["headlines", "descriptions", "keywords"]
+        ],
+        training_data,
+        check_like=True,
     )
 
   def test_create_from_pandas_on_invalid_ad_is_raise_raises_exception(self):
@@ -194,10 +197,10 @@ class CopycatTest(parameterized.TestCase):
     ):
       copycat.Copycat.create_from_pandas(
           training_data=training_data,
-          embedding_model_name="textembedding-gecko",
-          persist_path=self.tmp_dir.full_path,
+          embedding_model_name="text-embedding-004",
           ad_format="text_ad",
           on_invalid_ad="raise",
+          vectorstore_exemplar_selection_method="random",
       )
 
   def test_create_from_pandas_on_invalid_ad_is_drop_drops_invalid_ads(self):
@@ -221,56 +224,24 @@ class CopycatTest(parameterized.TestCase):
     ):
       copycat_instance = copycat.Copycat.create_from_pandas(
           training_data=training_data,
-          embedding_model_name="textembedding-gecko",
-          persist_path=self.tmp_dir.full_path,
+          embedding_model_name="text-embedding-004",
           ad_format="text_ad",
           on_invalid_ad="drop",
+          vectorstore_exemplar_selection_method="random",
       )
 
-    self.assertNotIn(
-        {"a" * 31, "invalid headline", "invalid description 1"},
-        set(copycat_instance.ad_copy_vectorstore.vectorstore._texts),
-    )
-
-  def test_create_from_pandas_creates_expected_unique_headlines(self):
-    training_data_with_duplicates = pd.concat(
-        [self.training_data(n_rows=3), self.training_data(n_rows=3)],
-        ignore_index=True,
-    )
-    copycat_instance = copycat.Copycat.create_from_pandas(
-        training_data=training_data_with_duplicates,
-        embedding_model_name="textembedding-gecko",
-        persist_path=self.tmp_dir.full_path,
-        ad_format="text_ad",
-    )
-
-    self.assertSetEqual(
-        copycat_instance.unique_headlines,
-        {
-            "train headline 1",
-            "train headline 2",
-            "train headline 3",
-            "train headline 1 (2)",
-            "train headline 2 (2)",
-            "train headline 3 (2)",
-        },
-    )
-
-  def test_create_from_pandas_creates_expected_unique_descriptions(self):
-    training_data_with_duplicates = pd.concat(
-        [self.training_data(n_rows=3), self.training_data(n_rows=3)],
-        ignore_index=True,
-    )
-    copycat_instance = copycat.Copycat.create_from_pandas(
-        training_data=training_data_with_duplicates,
-        embedding_model_name="textembedding-gecko",
-        persist_path=self.tmp_dir.full_path,
-        ad_format="text_ad",
-    )
-
-    self.assertSetEqual(
-        copycat_instance.unique_descriptions,
-        {"train description 1", "train description 2", "train description 3"},
+    pd.testing.assert_frame_equal(
+        copycat_instance.ad_copy_vectorstore.ad_exemplars[
+            ["headlines", "descriptions", "keywords"]
+        ],
+        pd.DataFrame.from_records([
+            {
+                "headlines": ["headline 3"],
+                "descriptions": ["description 3"],
+                "keywords": "keyword 3, keyword 4",
+            },
+        ]),
+        check_like=True,
     )
 
   @parameterized.parameters("headlines", "descriptions", "keywords")
@@ -284,9 +255,9 @@ class CopycatTest(parameterized.TestCase):
     with self.assertRaisesWithLiteralMatch(ValueError, expected_error_message):
       copycat.Copycat.create_from_pandas(
           training_data=self.training_data(3).drop(columns=[missing_column]),
-          embedding_model_name="textembedding-gecko",
-          persist_path=self.tmp_dir.full_path,
+          embedding_model_name="text-embedding-004",
           ad_format="text_ad",
+          vectorstore_exemplar_selection_method="random",
       )
 
   @parameterized.named_parameters(
@@ -299,7 +270,7 @@ class CopycatTest(parameterized.TestCase):
                   role="user",
                   parts=[
                       generative_models.Part.from_text(
-                          "Keywords: keyword 3a, keyword 3b"
+                          "Keywords: keyword 11a, keyword 11b"
                       )
                   ],
               ),
@@ -307,8 +278,8 @@ class CopycatTest(parameterized.TestCase):
                   role="model",
                   parts=[
                       generative_models.Part.from_text(
-                          '{"headlines":["train headline 3","train headline 3'
-                          ' (2)"],"descriptions":["train description 3"]}'
+                          '{"headlines":["train headline 11","train headline 11'
+                          ' (2)"],"descriptions":["train description 11"]}'
                       )
                   ],
               ),
@@ -316,7 +287,7 @@ class CopycatTest(parameterized.TestCase):
                   role="user",
                   parts=[
                       generative_models.Part.from_text(
-                          "Keywords: keyword 4a, keyword 4b"
+                          "Keywords: keyword 13a, keyword 13b"
                       )
                   ],
               ),
@@ -324,8 +295,8 @@ class CopycatTest(parameterized.TestCase):
                   role="model",
                   parts=[
                       generative_models.Part.from_text(
-                          '{"headlines":["train headline 4","train headline 4'
-                          ' (2)"],"descriptions":["train description 4"]}'
+                          '{"headlines":["train headline 13","train headline 13'
+                          ' (2)"],"descriptions":["train description 13"]}'
                       )
                   ],
               ),
@@ -348,7 +319,7 @@ class CopycatTest(parameterized.TestCase):
                   role="user",
                   parts=[
                       generative_models.Part.from_text(
-                          "Keywords: keyword 3a, keyword 3b"
+                          "Keywords: keyword 11a, keyword 11b"
                       )
                   ],
               ),
@@ -356,8 +327,8 @@ class CopycatTest(parameterized.TestCase):
                   role="model",
                   parts=[
                       generative_models.Part.from_text(
-                          '{"headlines":["train headline 3","train headline 3'
-                          ' (2)"],"descriptions":["train description 3"]}'
+                          '{"headlines":["train headline 11","train headline 11'
+                          ' (2)"],"descriptions":["train description 11"]}'
                       )
                   ],
               ),
@@ -365,7 +336,7 @@ class CopycatTest(parameterized.TestCase):
                   role="user",
                   parts=[
                       generative_models.Part.from_text(
-                          "Keywords: keyword 4a, keyword 4b"
+                          "Keywords: keyword 13a, keyword 13b"
                       )
                   ],
               ),
@@ -373,8 +344,8 @@ class CopycatTest(parameterized.TestCase):
                   role="model",
                   parts=[
                       generative_models.Part.from_text(
-                          '{"headlines":["train headline 4","train headline 4'
-                          ' (2)"],"descriptions":["train description 4"]}'
+                          '{"headlines":["train headline 13","train headline 13'
+                          ' (2)"],"descriptions":["train description 13"]}'
                       )
                   ],
               ),
@@ -392,7 +363,7 @@ class CopycatTest(parameterized.TestCase):
           ],
       ),
   )
-  def test_construct_text_generation_request_for_new_ad_copy_returns_expected_request(
+  def test_construct_text_generation_requests_for_new_ad_copy_returns_expected_request(
       self,
       keywords,
       keywords_specific_instructions,
@@ -400,18 +371,17 @@ class CopycatTest(parameterized.TestCase):
   ):
     copycat_instance = copycat.Copycat.create_from_pandas(
         training_data=self.training_data(n_rows=20),
-        embedding_model_name="textembedding-gecko",
-        persist_path=self.tmp_dir.full_path,
+        embedding_model_name="text-embedding-004",
         ad_format="text_ad",
+        vectorstore_exemplar_selection_method="random",
     )
     request = (
-        copycat_instance.construct_text_generation_request_for_new_ad_copy(
-            keywords=keywords,
-            keywords_specific_instructions=keywords_specific_instructions,
+        copycat_instance.construct_text_generation_requests_for_new_ad_copy(
+            keywords=[keywords],
+            keywords_specific_instructions=[keywords_specific_instructions],
             num_in_context_examples=2,
-            in_context_examples_fetch_k=20,
             system_instruction="Example system instruction",
-        )
+        )[0]
     )
 
     expected_request = copycat.TextGenerationRequest(
@@ -437,15 +407,14 @@ class CopycatTest(parameterized.TestCase):
 
     copycat_instance = copycat.Copycat.create_from_pandas(
         training_data=self.training_data(20),
-        embedding_model_name="textembedding-gecko",
-        persist_path=self.tmp_dir.full_path,
+        embedding_model_name="text-embedding-004",
         ad_format="text_ad",
+        vectorstore_exemplar_selection_method="random",
     )
     response = copycat_instance.generate_new_ad_copy(
         keywords=["my keyword 1, my keyword 2"],
         style_guide="This is my style guide.",
         num_in_context_examples=2,
-        in_context_examples_fetch_k=20,
         system_instruction_kwargs=dict(
             company_name="My company",
             language="english",
@@ -463,8 +432,8 @@ class CopycatTest(parameterized.TestCase):
             keywords="my keyword 1, my keyword 2",
             error_message="",
             evaluation_metrics=copycat.EvaluationMetrics(
-                style_similarity=0.5198263722332381,
-                keyword_similarity=0.5207039018342632,
+                style_similarity=0.5049241734655925,
+                keyword_similarity=0.5209703590026296,
             ),
         ),
     )
@@ -481,15 +450,14 @@ class CopycatTest(parameterized.TestCase):
 
     copycat_instance = copycat.Copycat.create_from_pandas(
         training_data=self.training_data(20),
-        embedding_model_name="textembedding-gecko",
-        persist_path=self.tmp_dir.full_path,
+        embedding_model_name="text-embedding-004",
         ad_format="text_ad",
+        vectorstore_exemplar_selection_method="random",
     )
     responses = copycat_instance.generate_new_ad_copy(
         keywords=["my keyword 1, my keyword 2", "another keyword"],
         style_guide="This is my style guide.",
         num_in_context_examples=2,
-        in_context_examples_fetch_k=20,
         system_instruction_kwargs=dict(
             company_name="My company",
             language="english",
@@ -504,16 +472,15 @@ class CopycatTest(parameterized.TestCase):
 
     copycat_instance = copycat.Copycat.create_from_pandas(
         training_data=self.training_data(20),
-        embedding_model_name="textembedding-gecko",
-        persist_path=self.tmp_dir.full_path,
+        embedding_model_name="text-embedding-004",
         ad_format="text_ad",
+        vectorstore_exemplar_selection_method="random",
     )
 
     response = copycat_instance.generate_new_ad_copy(
         keywords=["my keyword 1, my keyword 2"],
         style_guide="This is my style guide.",
         num_in_context_examples=2,
-        in_context_examples_fetch_k=20,
         system_instruction_kwargs=dict(
             company_name="My company",
             language="english",
@@ -606,16 +573,15 @@ class CopycatTest(parameterized.TestCase):
     ):
       copycat_instance = copycat.Copycat.create_from_pandas(
           training_data=self.training_data(20),
-          embedding_model_name="textembedding-gecko",
-          persist_path=self.tmp_dir.full_path,
+          embedding_model_name="text-embedding-004",
           ad_format="text_ad",
+          vectorstore_exemplar_selection_method="random",
       )
 
       response = copycat_instance.generate_new_ad_copy(
           keywords=["my keyword 1, my keyword 2"],
           style_guide="This is my style guide.",
           num_in_context_examples=2,
-          in_context_examples_fetch_k=20,
           system_instruction_kwargs=dict(
               company_name="My company",
               language="english",
@@ -656,16 +622,15 @@ class CopycatTest(parameterized.TestCase):
     with testing_utils.PatchGenerativeModel(response=failed_response):
       copycat_instance = copycat.Copycat.create_from_pandas(
           training_data=self.training_data(20),
-          embedding_model_name="textembedding-gecko",
-          persist_path=self.tmp_dir.full_path,
+          embedding_model_name="text-embedding-004",
           ad_format="text_ad",
+          vectorstore_exemplar_selection_method="random",
       )
 
       response = copycat_instance.generate_new_ad_copy(
           keywords=["my keyword 1, my keyword 2"],
           style_guide="This is my style guide.",
           num_in_context_examples=2,
-          in_context_examples_fetch_k=20,
           system_instruction_kwargs=dict(
               company_name="My company",
               language="english",
@@ -697,11 +662,11 @@ class CopycatTest(parameterized.TestCase):
 
     copycat_instance = copycat.Copycat.create_from_pandas(
         training_data=self.training_data(3),
-        embedding_model_name="textembedding-gecko",
-        persist_path=self.tmp_dir.full_path,
+        embedding_model_name="text-embedding-004",
         ad_format="text_ad",
+        vectorstore_exemplar_selection_method="random",
     )
-    copycat_instance.write()
+    copycat_instance.write(self.tmp_dir.full_path)
 
     loaded_copycat_instance = copycat.Copycat.load(self.tmp_dir.full_path)
 
@@ -722,9 +687,9 @@ class CopycatTest(parameterized.TestCase):
   ):
     copycat_instance = copycat.Copycat.create_from_pandas(
         training_data=self.training_data(20),
-        embedding_model_name="textembedding-gecko",
-        persist_path=self.tmp_dir.full_path,
+        embedding_model_name="text-embedding-004",
         ad_format="text_ad",
+        vectorstore_exemplar_selection_method="random",
     )
     with self.assertRaisesWithLiteralMatch(
         ValueError,
@@ -739,7 +704,6 @@ class CopycatTest(parameterized.TestCase):
           ],
           style_guide="This is my style guide.",
           num_in_context_examples=2,
-          in_context_examples_fetch_k=20,
           system_instruction_kwargs=dict(
               company_name="My company",
               language="english",
@@ -757,9 +721,9 @@ class CopycatTest(parameterized.TestCase):
   ):
     copycat_instance = copycat.Copycat.create_from_pandas(
         training_data=self.training_data(20),
-        embedding_model_name="textembedding-gecko",
-        persist_path=self.tmp_dir.full_path,
+        embedding_model_name="text-embedding-004",
         ad_format="text_ad",
+        vectorstore_exemplar_selection_method="random",
     )
 
     _ = copycat_instance.generate_new_ad_copy(
@@ -769,7 +733,6 @@ class CopycatTest(parameterized.TestCase):
         ],
         style_guide="This is my style guide.",
         num_in_context_examples=2,
-        in_context_examples_fetch_k=20,
         system_instruction_kwargs=dict(
             company_name="My company",
             language="english",
@@ -798,16 +761,15 @@ class CopycatTest(parameterized.TestCase):
   ):
     copycat_instance = copycat.Copycat.create_from_pandas(
         training_data=self.training_data(20),
-        embedding_model_name="textembedding-gecko",
-        persist_path=self.tmp_dir.full_path,
+        embedding_model_name="text-embedding-004",
         ad_format="text_ad",
+        vectorstore_exemplar_selection_method="random",
     )
 
     _ = copycat_instance.generate_new_ad_copy(
         keywords=["my keyword 1, my keyword 2"],
         style_guide="This is my style guide.",
         num_in_context_examples=2,
-        in_context_examples_fetch_k=20,
         system_instruction_kwargs=dict(
             company_name="My company",
             language="english",

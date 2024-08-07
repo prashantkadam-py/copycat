@@ -17,6 +17,7 @@ import textwrap
 from absl.testing import absltest
 from absl.testing import parameterized
 from google.cloud.aiplatform.vertexai import generative_models
+import mock
 import pandas as pd
 
 from copycat.py import ad_copy_generator
@@ -147,72 +148,18 @@ class AdCopyVectorstoreTest(parameterized.TestCase):
     ad_copy_vectorstore = (
         ad_copy_generator.AdCopyVectorstore.create_from_pandas(
             training_data=training_data,
-            embedding_model_name="textembedding-gecko",
-            persist_path=self.tmp_dir.full_path,
+            embedding_model_name="text-embedding-004",
+            dimensionality=256,
+            max_initial_ads=100,
+            max_exemplar_ads=10,
+            affinity_preference=None,
+            embeddings_batch_size=10,
+            exemplar_selection_method="random",
         )
-    )
-
-    n_rows_in_vectorstore = len(ad_copy_vectorstore.vectorstore._metadatas)
-    self.assertListEqual(
-        [
-            row["headlines"]
-            for row in ad_copy_vectorstore.vectorstore._metadatas
-        ],
-        [["headline 1", "headline 2"]] * n_rows_in_vectorstore,
-    )
-    self.assertListEqual(
-        [
-            row["descriptions"]
-            for row in ad_copy_vectorstore.vectorstore._metadatas
-        ],
-        [["description 1", "description 2"]] * n_rows_in_vectorstore,
     )
     self.assertLen(
-        set([
-            row["keywords"]
-            for row in ad_copy_vectorstore.vectorstore._metadatas
-        ]),
+        ad_copy_vectorstore.ad_exemplars,
         1,
-    )
-    self.assertIn(
-        ad_copy_vectorstore.vectorstore._metadatas[0]["keywords"],
-        ["keyword 1, keyword 2", "keyword 3, keyword 4"],
-    )
-
-  def test_create_from_pandas_explodes_headlines_and_descriptions_for_texts(
-      self,
-  ):
-    training_data = pd.DataFrame.from_records([
-        {
-            "headlines": ["headline 1", "headline 2"],
-            "descriptions": ["description 1", "description 2"],
-            "keywords": "keyword 1, keyword 2",
-        },
-        {
-            "headlines": ["headline 3"],
-            "descriptions": ["description 3"],
-            "keywords": "keyword 3, keyword 4",
-        },
-    ])
-
-    ad_copy_vectorstore = (
-        ad_copy_generator.AdCopyVectorstore.create_from_pandas(
-            training_data=training_data,
-            embedding_model_name="textembedding-gecko",
-            persist_path=self.tmp_dir.full_path,
-        )
-    )
-
-    self.assertCountEqual(
-        ad_copy_vectorstore.vectorstore._texts,
-        [
-            "headline 1",
-            "headline 2",
-            "headline 3",
-            "description 1",
-            "description 2",
-            "description 3",
-        ],
     )
 
   def test_get_relevant_ads_retrieves_keywords_and_ads(self):
@@ -238,30 +185,67 @@ class AdCopyVectorstoreTest(parameterized.TestCase):
     ad_copy_vectorstore = (
         ad_copy_generator.AdCopyVectorstore.create_from_pandas(
             training_data=training_data,
-            embedding_model_name="textembedding-gecko",
-            persist_path=self.tmp_dir.full_path,
+            embedding_model_name="text-embedding-004",
+            dimensionality=256,
+            max_initial_ads=100,
+            max_exemplar_ads=10,
+            affinity_preference=None,
+            embeddings_batch_size=10,
+            exemplar_selection_method="random",
         )
     )
 
-    results = ad_copy_vectorstore.get_relevant_ads("test query", k=2)
-    expected_results = [
-        (
-            "keyword 5, keyword 6",
-            google_ads.GoogleAd(
-                headlines=["headline 4", "headline 5"],
-                descriptions=["description 2"],
+    results = ad_copy_vectorstore.get_relevant_ads(["test query"], k=2)
+    expected_results = [[
+        ad_copy_generator.ExampleAd(
+            keywords="keyword 1, keyword 2",
+            google_ad=google_ads.GoogleAd(
+                headlines=["headline 1", "headline 2"],
+                descriptions=["description 1", "description 2"],
             ),
         ),
-        (
-            "keyword 3, keyword 4",
-            google_ads.GoogleAd(
+        ad_copy_generator.ExampleAd(
+            keywords="keyword 3, keyword 4",
+            google_ad=google_ads.GoogleAd(
                 headlines=["headline 3"],
                 descriptions=["description 3"],
             ),
         ),
-    ]
+    ]]
 
     self.assertListEqual(results, expected_results)
+
+  def test_affinity_propagation_is_used_to_select_ads_if_provided(self):
+    training_data = pd.DataFrame.from_records([
+        {
+            "headlines": ["headline 1", "headline 2"],
+            "descriptions": ["description 1", "description 2"],
+            "keywords": "keyword 1, keyword 2",
+        },
+        {
+            "headlines": ["headline 3"],
+            "descriptions": ["description 3"],
+            "keywords": "keyword 3, keyword 4",
+        },
+    ])
+
+    with mock.patch(
+        "google3.third_party.professional_services.solutions.copycat.py.ad_copy_generator.cluster.AffinityPropagation"
+    ) as mock_affinity_propagation:
+      (
+          ad_copy_generator.AdCopyVectorstore.create_from_pandas(
+              training_data=training_data,
+              embedding_model_name="text-embedding-004",
+              dimensionality=256,
+              max_initial_ads=100,
+              max_exemplar_ads=10,
+              affinity_preference=None,
+              embeddings_batch_size=10,
+              exemplar_selection_method="affinity_propagation",
+          )
+      )
+
+      mock_affinity_propagation.assert_called_once()
 
   def test_write_and_load_loads_the_same_instance(self):
     training_data = pd.DataFrame.from_records([
@@ -285,11 +269,16 @@ class AdCopyVectorstoreTest(parameterized.TestCase):
     ad_copy_vectorstore = (
         ad_copy_generator.AdCopyVectorstore.create_from_pandas(
             training_data=training_data,
-            embedding_model_name="textembedding-gecko",
-            persist_path=self.tmp_dir.full_path,
+            embedding_model_name="text-embedding-004",
+            dimensionality=256,
+            max_initial_ads=100,
+            max_exemplar_ads=10,
+            affinity_preference=None,
+            embeddings_batch_size=10,
+            exemplar_selection_method="random",
         )
     )
-    ad_copy_vectorstore.write()
+    ad_copy_vectorstore.write(self.tmp_dir.full_path)
 
     loaded_ad_copy_vectorstore = ad_copy_generator.AdCopyVectorstore.load(
         self.tmp_dir.full_path
@@ -301,79 +290,111 @@ class AdCopyVectorstoreTest(parameterized.TestCase):
         )
     )
 
-
-class AdCopyGeneratorTest(parameterized.TestCase):
-
-  def test_construct_examples_for_new_ad_copy_generation_returns_expected_messages(
-      self,
-  ):
-    relevant_ads = [
-        (
-            "keyword 5, keyword 6",
-            google_ads.GoogleAd(
-                headlines=["headline 4", "headline 5"],
-                descriptions=["description 2"],
-            ),
-        ),
-        (
-            "keyword 3, keyword 4",
-            google_ads.GoogleAd(
-                headlines=["headline 3"],
-                descriptions=["description 3", "description with unicode weiß"],
-            ),
-        ),
-    ]
-    output_messages = (
-        ad_copy_generator.construct_examples_for_new_ad_copy_generation(
-            relevant_ads
+  def test_unique_headlines_and_descriptions_are_set_correctly(self):
+    training_data = pd.DataFrame.from_records([
+        {
+            "headlines": ["headline 1", "headline 2"],
+            "descriptions": ["description 1", "description 2"],
+            "keywords": "keyword 1, keyword 2",
+        },
+        {
+            "headlines": ["headline 3", "headline 2"],
+            "descriptions": ["description 3", "description 1"],
+            "keywords": "keyword 3, keyword 4",
+        },
+    ])
+    ad_copy_vectorstore = (
+        ad_copy_generator.AdCopyVectorstore.create_from_pandas(
+            training_data=training_data,
+            embedding_model_name="text-embedding-004",
+            dimensionality=256,
+            max_initial_ads=100,
+            max_exemplar_ads=10,
+            affinity_preference=None,
+            embeddings_batch_size=10,
+            exemplar_selection_method="random",
         )
     )
 
-    expected_messages = [
-        generative_models.Content(
-            role="user",
-            parts=[
-                generative_models.Part.from_text(
-                    "Keywords: keyword 3, keyword 4"
-                )
-            ],
-        ),
-        generative_models.Content(
-            role="model",
-            parts=[
-                generative_models.Part.from_text(
-                    '{"headlines":["headline 3"],"descriptions":'
-                    '["description 3","description with unicode weiß"]}'
-                )
-            ],
-        ),
-        generative_models.Content(
-            role="user",
-            parts=[
-                generative_models.Part.from_text(
-                    "Keywords: keyword 5, keyword 6"
-                )
-            ],
-        ),
-        generative_models.Content(
-            role="model",
-            parts=[
-                generative_models.Part.from_text(
-                    '{"headlines":["headline 4","headline 5"],'
-                    '"descriptions":["description 2"]}'
-                )
-            ],
-        ),
-    ]
+    self.assertSetEqual(
+        ad_copy_vectorstore.unique_headlines,
+        {"headline 1", "headline 2", "headline 3"},
+    )
+    self.assertSetEqual(
+        ad_copy_vectorstore.unique_descriptions,
+        {"description 1", "description 2", "description 3"},
+    )
 
-    expected_messages_as_dicts = [
-        expected_message.to_dict() for expected_message in expected_messages
-    ]
-    output_messages_as_dicts = [
-        output_message.to_dict() for output_message in output_messages
-    ]
+  def test_embed_documents_returns_expected_embeddings(self):
+    training_data = pd.DataFrame.from_records([
+        {
+            "headlines": ["headline 1", "headline 2"],
+            "descriptions": ["description 1", "description 2"],
+            "keywords": "keyword 1, keyword 2",
+        },
+        {
+            "headlines": ["headline 3"],
+            "descriptions": ["description 3"],
+            "keywords": "keyword 3, keyword 4",
+        },
+    ])
+    ad_copy_vectorstore = (
+        ad_copy_generator.AdCopyVectorstore.create_from_pandas(
+            training_data=training_data,
+            embedding_model_name="text-embedding-004",
+            dimensionality=256,
+            max_initial_ads=100,
+            max_exemplar_ads=10,
+            affinity_preference=None,
+            embeddings_batch_size=10,
+            exemplar_selection_method="random",
+        )
+    )
 
-    self.assertListEqual(output_messages_as_dicts, expected_messages_as_dicts)
+    embeddings = ad_copy_vectorstore.embed_documents(
+        ["headline 1", "headline 2", "headline 3"]
+    )
+    self.assertLen(embeddings, 3)
+    self.assertLen(embeddings[0], 256)
+    self.assertLen(embeddings[1], 256)
+    self.assertLen(embeddings[2], 256)
+
+  def test_embed_queries_embeds_queries_correctly(self):
+    training_data = pd.DataFrame.from_records([
+        {
+            "headlines": ["headline 1", "headline 2"],
+            "descriptions": ["description 1", "description 2"],
+            "keywords": "keyword 1, keyword 2",
+        },
+        {
+            "headlines": ["headline 3"],
+            "descriptions": ["description 3"],
+            "keywords": "keyword 3, keyword 4",
+        },
+    ])
+    ad_copy_vectorstore = (
+        ad_copy_generator.AdCopyVectorstore.create_from_pandas(
+            training_data=training_data,
+            embedding_model_name="text-embedding-004",
+            dimensionality=256,
+            max_initial_ads=100,
+            max_exemplar_ads=10,
+            affinity_preference=None,
+            embeddings_batch_size=10,
+            exemplar_selection_method="random",
+        )
+    )
+
+    embeddings = ad_copy_vectorstore.embed_queries(
+        ["headline 1", "headline 2", "headline 3"]
+    )
+    self.assertLen(embeddings, 3)
+    self.assertLen(embeddings[0], 256)
+    self.assertLen(embeddings[1], 256)
+    self.assertLen(embeddings[2], 256)
+
+
+class AdCopyGeneratorTest(parameterized.TestCase):
 
   def test_construct_system_instruction_constructs_expected_instruction_with_style_guide(
       self,
@@ -417,33 +438,64 @@ class AdCopyGeneratorTest(parameterized.TestCase):
   def test_construct_new_ad_copy_prompt_constructs_expected_prompt_with_keywords_specific_instructions(
       self,
   ):
-    in_context_example_content = [
-        generative_models.Content(
-            role="model",
-            parts=[
-                generative_models.Part.from_text(
-                    '{"headlines": ["hello", "world"],"descriptions":'
-                    ' ["something", "else"]}',
-                )
-            ],
-        ),
-    ]
-
     prompt = ad_copy_generator.construct_new_ad_copy_prompt(
+        example_ads=[
+            ad_copy_generator.ExampleAd(
+                keywords="keyword 5, keyword 6",
+                google_ad=google_ads.GoogleAd(
+                    headlines=["headline 4", "headline 5"],
+                    descriptions=["description 2"],
+                ),
+            ),
+            ad_copy_generator.ExampleAd(
+                keywords="keyword 3, keyword 4",
+                google_ad=google_ads.GoogleAd(
+                    headlines=["headline 3"],
+                    descriptions=[
+                        "description 3",
+                        "description with unicode weiß",
+                    ],
+                ),
+            ),
+        ],
         keywords_specific_instructions=(
             "My keywords specific instructions with unicode ß"
         ),
-        in_context_example_content=in_context_example_content,
         keywords="Keyword 1, Keyword 2, keyword λ",
     )
 
     expected_prompt = [
         generative_models.Content(
+            role="user",
+            parts=[
+                generative_models.Part.from_text(
+                    "Keywords: keyword 3, keyword 4"
+                )
+            ],
+        ),
+        generative_models.Content(
             role="model",
             parts=[
                 generative_models.Part.from_text(
-                    '{"headlines": ["hello", "world"],"descriptions":'
-                    ' ["something", "else"]}',
+                    '{"headlines":["headline 3"],"descriptions":'
+                    '["description 3","description with unicode weiß"]}'
+                )
+            ],
+        ),
+        generative_models.Content(
+            role="user",
+            parts=[
+                generative_models.Part.from_text(
+                    "Keywords: keyword 5, keyword 6"
+                )
+            ],
+        ),
+        generative_models.Content(
+            role="model",
+            parts=[
+                generative_models.Part.from_text(
+                    '{"headlines":["headline 4","headline 5"],'
+                    '"descriptions":["description 2"]}'
                 )
             ],
         ),
@@ -468,31 +520,62 @@ class AdCopyGeneratorTest(parameterized.TestCase):
   def test_construct_new_ad_copy_prompt_without_keywords_specific_instructions(
       self,
   ):
-    in_context_example_content = [
-        generative_models.Content(
-            role="model",
-            parts=[
-                generative_models.Part.from_text(
-                    '{"description": ["something", "else"], "headlines":'
-                    ' ["hello", "world"]}'
-                )
-            ],
-        ),
-    ]
-
     prompt = ad_copy_generator.construct_new_ad_copy_prompt(
+        example_ads=[
+            ad_copy_generator.ExampleAd(
+                keywords="keyword 5, keyword 6",
+                google_ad=google_ads.GoogleAd(
+                    headlines=["headline 4", "headline 5"],
+                    descriptions=["description 2"],
+                ),
+            ),
+            ad_copy_generator.ExampleAd(
+                keywords="keyword 3, keyword 4",
+                google_ad=google_ads.GoogleAd(
+                    headlines=["headline 3"],
+                    descriptions=[
+                        "description 3",
+                        "description with unicode weiß",
+                    ],
+                ),
+            ),
+        ],
         keywords_specific_instructions="",
-        in_context_example_content=in_context_example_content,
         keywords="Keyword 1, Keyword 2",
     )
 
     expected_prompt = [
         generative_models.Content(
+            role="user",
+            parts=[
+                generative_models.Part.from_text(
+                    "Keywords: keyword 3, keyword 4"
+                )
+            ],
+        ),
+        generative_models.Content(
             role="model",
             parts=[
                 generative_models.Part.from_text(
-                    '{"description": ["something", "else"], "headlines":'
-                    ' ["hello", "world"]}',
+                    '{"headlines":["headline 3"],"descriptions":'
+                    '["description 3","description with unicode weiß"]}'
+                )
+            ],
+        ),
+        generative_models.Content(
+            role="user",
+            parts=[
+                generative_models.Part.from_text(
+                    "Keywords: keyword 5, keyword 6"
+                )
+            ],
+        ),
+        generative_models.Content(
+            role="model",
+            parts=[
+                generative_models.Part.from_text(
+                    '{"headlines":["headline 4","headline 5"],'
+                    '"descriptions":["description 2"]}'
                 )
             ],
         ),

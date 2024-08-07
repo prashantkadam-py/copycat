@@ -39,8 +39,13 @@ class AdCopyEvaluatorTest(parameterized.TestCase):
     self.ad_copy_vectorstore = (
         ad_copy_generator.AdCopyVectorstore.create_from_pandas(
             training_data=training_data,
-            embedding_model_name="textembedding-gecko",
-            persist_path=self.create_tempdir().full_path,
+            embedding_model_name="text-embedding-004",
+            dimensionality=256,
+            max_initial_ads=100,
+            max_exemplar_ads=20,
+            affinity_preference=None,
+            embeddings_batch_size=10,
+            exemplar_selection_method="random",
         )
     )
 
@@ -70,8 +75,8 @@ class AdCopyEvaluatorTest(parameterized.TestCase):
     )
 
     expected_metrics = ad_copy_evaluator.EvaluationMetrics(
-        style_similarity=0.5270080780826749,
-        keyword_similarity=0.5021486653178789,
+        style_similarity=0.47856515971549163,
+        keyword_similarity=0.46178879468508377,
     )
     self.assertEqual(actual_metrics, expected_metrics)
 

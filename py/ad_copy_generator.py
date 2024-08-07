@@ -16,18 +16,20 @@ import asyncio
 from collections.abc import Sequence
 import dataclasses
 import enum
+import functools
 import json
-import pathlib
 from typing import Any, AsyncIterable, Coroutine, Hashable, TypeVar
 
 from google.cloud.aiplatform.vertexai import generative_models
-from langchain_community import vectorstores as community_vectorstores
+from google.cloud.aiplatform.vertexai import language_models
 import numpy as np
 import pandas as pd
 import pydantic
+from sklearn import cluster
+from sklearn import neighbors
+import tqdm.autonotebook as tqdm
 
 from copycat.py import google_ads
-from copycat.py import models as embedding_models
 
 
 AsyncGenerationResponse = Coroutine[
@@ -48,9 +50,8 @@ SafetySettingsType = (
     | list[generative_models.SafetySetting]
 )
 
-
-SKLEARN_VECTORSTORE_FILE_NAME = "vectorstore"
 VECTORSTORE_PARAMS_FILE_NAME = "vectorstore_params.json"
+VECTORSTORE_AD_EXEMPLARS_FILE_NAME = "vectorstore_ad_exemplars.csv"
 
 
 class ModelName(enum.Enum):
@@ -60,10 +61,13 @@ class ModelName(enum.Enum):
 
 
 class EmbeddingModelName(enum.Enum):
-  TEXT_EMBEDDING_GECKO = "textembedding-gecko"
-  TEXT_EMBEDDINGS = "text-embedding-004"
-  TEXT_EMBEDDING_GECKO_MULTILINGUAL = "textembedding-gecko-multilingual"
-  TEXT_EMBEDDING_MULTILINGUAL = "text-multilingual-embedding-002"
+  TEXT_EMBEDDING = "text-embedding-004"
+  TEXT_MULTILINGUAL_EMBEDDING = "text-multilingual-embedding-002"
+
+
+class ExemplarSelectionMethod(enum.Enum):
+  AFFINITY_PROPAGATION = "affinity_propagation"
+  RANDOM = "random"
 
 
 class TextGenerationRequest(pydantic.BaseModel):
@@ -99,6 +103,28 @@ class TextGenerationRequest(pydantic.BaseModel):
     return "\n\n".join(lines)
 
 
+class ExampleAd(pydantic.BaseModel):
+  """An example ad.
+
+  Attributes:
+    google_ad: The google ad containing the headlines and descriptions.
+    keywords: The keywords this ad was used for.
+  """
+
+  google_ad: GoogleAd
+  keywords: str
+
+  @classmethod
+  def from_flat_values(
+      cls, keywords: str, headlines: list[str], descriptions: list[str]
+  ) -> "ExampleAd":
+    """Creates an ExampleAd from keywords, headlines and descriptions."""
+    return cls(
+        google_ad=GoogleAd(headlines=headlines, descriptions=descriptions),
+        keywords=keywords,
+    )
+
+
 @dataclasses.dataclass
 class AdCopyVectorstore:
   """The vector store containing the ad copies.
@@ -113,15 +139,114 @@ class AdCopyVectorstore:
 
   Attributes:
     embedding_model_name: The name of the embedding model to use.
-    vectorstore: The vector store containing the ad copies.
-    persist_path: The path to persist the vector store to.
-    max_fetch_k: The maximum number of documents to fetch before performing mmr
-      search.
+    ad_exemplars: The example ads available to be used as in context examples.
+    dimensionality: The dimensionality of the embedding model.
+    embeddings_batch_size: The batch size to use when generating embeddings.
+    unique_headlines: The unique headlines in the vectorstore.
+    unique_descriptions: The unique descriptions in the vectorstore.
+    n_exemplars: The total number of exemplars in the vectorstore.
   """
 
   embedding_model_name: EmbeddingModelName
-  vectorstore: community_vectorstores.SKLearnVectorStore
-  persist_path: str
+  ad_exemplars: pd.DataFrame
+  dimensionality: int
+  embeddings_batch_size: int
+
+  @classmethod
+  def _generate_embeddings(
+      cls,
+      texts: list[str],
+      *,
+      embedding_model_name: EmbeddingModelName,
+      dimensionality: int,
+      batch_size: int,
+      task_type: str,
+      progress_bar: bool = False,
+  ) -> list[list[float]]:
+    """Generates embeddings for the provided texts.
+
+    Args:
+      texts: The texts to generate embeddings for.
+      embedding_model_name: The name of the embedding model to use.
+      dimensionality: The dimensionality of the embedding model.
+      batch_size: The batch size to use when generating embeddings.
+      task_type: The task type to use when generating embeddings.
+      progress_bar: Whether to show a progress bar.
+
+    Returns:
+      The generated embeddings.
+    """
+    embedding_model = language_models.TextEmbeddingModel.from_pretrained(
+        embedding_model_name.value
+    )
+    n_batches = np.ceil(len(texts) / batch_size)
+
+    embeddings = []
+
+    texts_batch_iterator = np.array_split(texts, n_batches)
+    if progress_bar:
+      texts_batch_iterator = tqdm.tqdm(
+          texts_batch_iterator, desc="Generating embeddings"
+      )
+
+    for texts_batch in texts_batch_iterator:
+      embedding_inputs = [
+          language_models.TextEmbeddingInput(ad_markdown, task_type)
+          for ad_markdown in texts_batch
+      ]
+      embedding_outputs = embedding_model.get_embeddings(
+          embedding_inputs, output_dimensionality=dimensionality
+      )
+      embeddings.extend([emb.values for emb in embedding_outputs])
+
+    return embeddings
+
+  def embed_documents(self, texts: list[str]) -> list[list[float]]:
+    """Generates embeddings for the provided texts."""
+    return self._generate_embeddings(
+        texts,
+        embedding_model_name=self.embedding_model_name,
+        dimensionality=self.dimensionality,
+        batch_size=self.embeddings_batch_size,
+        task_type="RETRIEVAL_DOCUMENT",
+        progress_bar=False,
+    )
+
+  def embed_queries(self, texts: list[str]) -> list[list[float]]:
+    """Generates embeddings for the provided texts."""
+    return self._generate_embeddings(
+        texts,
+        embedding_model_name=self.embedding_model_name,
+        dimensionality=self.dimensionality,
+        batch_size=self.embeddings_batch_size,
+        task_type="RETRIEVAL_QUERY",
+        progress_bar=False,
+    )
+
+  @classmethod
+  def _get_exemplars(
+      cls,
+      data: pd.DataFrame,
+      *,
+      embeddings_column: str,
+      affinity_preference: float | None,
+      max_exemplars: int,
+  ) -> pd.DataFrame:
+    """Uses Affinity Propagation to find exemplar ads."""
+    embeddings = np.asarray(data[embeddings_column].values.tolist())
+
+    clusterer = cluster.AffinityPropagation(preference=affinity_preference)
+    clusterer.fit(embeddings)
+    exemplars = (
+        data.iloc[clusterer.cluster_centers_indices_]
+        .copy()
+        .reset_index(drop=True)
+    )
+
+    if len(exemplars) > max_exemplars:
+      exemplars = exemplars.sample(max_exemplars)
+
+    return exemplars
 
   @classmethod
   def _deduplicate_ads(cls, data: pd.DataFrame) -> pd.DataFrame:
@@ -151,67 +276,19 @@ class AdCopyVectorstore:
     return data
 
   @classmethod
-  def _explode_headlines_and_descriptions(
-      cls, data: pd.DataFrame
-  ) -> pd.DataFrame:
-    """Explodes the headlines and descriptions in the training data.
-
-    Creates a new column called "exploded_headlines_and_descriptions" which
-    contains all of the headlines and descriptions from the original columns.
-    These exploded headlines and descriptions are then used as the documents
-    in the vectorstore.
-
-    For example, if the original data contained a single row with:
-
-      - headlines: ["headline 1", "headline 2"]
-      - descriptions: ["description 1", "description 2"]
-
-    Then this row would be exploded into 4 rows, with the following values:
-
-      - headlines:                            ["headline 1", "headline 2"]
-      - descriptions:                         ["description 1", "description 2"]
-      - exploded_headlines_and_descriptions:  "headline 1"
-
-      - headlines:                            ["headline 1", "headline 2"]
-      - descriptions:                         ["description 1", "description 2"]
-      - exploded_headlines_and_descriptions:  "headline 2"
-
-      - headlines:                            ["headline 1", "headline 2"]
-      - descriptions:                         ["description 1", "description 2"]
-      - exploded_headlines_and_descriptions:  "description 1"
-
-      - headlines:                            ["headline 1", "headline 2"]
-      - descriptions:                         ["description 1", "description 2"]
-      - exploded_headlines_and_descriptions:  "description 2"
-
-    Args:
-      data: The training data containing the headlines, descriptions and
-        keywords.
-
-    Returns:
-      The training data with the exploded headlines and descriptions.
-    """
-    headlines = data["headlines"].explode()
-    descriptions = data["descriptions"].explode()
-
-    exploded_headlines_and_descriptions = (
-        pd.concat([headlines, descriptions])
-        .reset_index()
-        .drop_duplicates()
-        .set_index("index")
-        .rename(columns={0: "exploded_headlines_and_descriptions"})
-    )
-    exploded_data = data.merge(
-        exploded_headlines_and_descriptions, left_index=True, right_index=True
-    )
-    return exploded_data
-
-  @classmethod
   def create_from_pandas(
       cls,
       training_data: pd.DataFrame,
+      *,
       embedding_model_name: str | EmbeddingModelName,
-      persist_path: str,
+      dimensionality: int,
+      max_initial_ads: int,
+      max_exemplar_ads: int,
+      affinity_preference: float | None,
+      embeddings_batch_size: int,
+      exemplar_selection_method: (
+          str | ExemplarSelectionMethod
+      ) = "affinity_propagation",
   ) -> "AdCopyVectorstore":
     """Creates a vector store containing the ad copies from pandas.
 
@@ -227,88 +304,166 @@ class AdCopyVectorstore:
       - keywords: The keywords the ad copy was used for. This should be a
         string of comma separated keywords.
 
+    The vectorstore is created by:
+      1.  Deduplicating the ads in the training data. This ensures that each ad
+          is only used once in the vectorstore.
+      2.  Sampling the training data to a maximum of max_initial_ads. This
+          ensures that the next steps are not too slow.
+      3.  Generating embeddings for the ads. This is done using the provided
+          embedding model name.
+      4.  Applying affinity propogation to find "exemplar ads", which are
+          ads that are representative of the training data, but are not too
+          similar to each other.
+      5.  Sampling the exemplar ads to a maximum of max_exemplar_ads. This
+          ensures that the vectorstore does not become too large.
+
+    The affinity propogation algorithm depends on the affinity_preference
+    parameter. A higher affinity_preference will result in more exemplar ads
+    being selected, while a lower affinity_preference will result in fewer
+    exemplar ads being selected. The affinity preference should be a negative
+    number. If set to None it automatically selects the number of
+    exemplar ads based on the data.
+
     Args:
       training_data: The training data containing the real ad copies and
         keywords.
       embedding_model_name: The name of the embedding model to use.
-      persist_path: The path to persist the vector store to.
+      dimensionality: The dimensionality of the embedding model.
+      max_initial_ads: The maximum number of ads to use from the training data.
+        This is used to speed up the process of creating the vectorstore.
+      max_exemplar_ads: The maximum number of exemplar ads to use in the
+        vectorstore.
+      affinity_preference: The affinity preference to use when finding exemplar
+        ads.
+      embeddings_batch_size: The batch size to use when generating embeddings.
+      exemplar_selection_method: The method to use to select the exemplar ads.
+        Either "affinity_propagation" or "random". Defaults to
+        "affinity_propagation".
 
     Returns:
-      A sklearn vector store containing the ad copies.
+      An instance of the AdCopyVectorstore containing the exemplar ads.
     """
     embedding_model_name = EmbeddingModelName(embedding_model_name)
-    embedding_model = embedding_models.BatchedVertexAIEmbeddings(
-        model_name=embedding_model_name.value
+    exemplar_selection_method = ExemplarSelectionMethod(
+        exemplar_selection_method
     )
 
     data = (
         training_data[["headlines", "descriptions", "keywords"]]
         .copy()
         .pipe(cls._deduplicate_ads)
-        .pipe(cls._explode_headlines_and_descriptions)
     )
 
-    metadata = data[["headlines", "descriptions", "keywords"]].to_dict(
-        "records"
-    )
-    texts = data["exploded_headlines_and_descriptions"].values.tolist()
+    if len(data) > max_initial_ads:
+      data = data.sample(max_initial_ads)
 
-    path = pathlib.Path(persist_path)
+    data["ad_markdown"] = data.apply(lambda x: str(GoogleAd(**x)), axis=1)
+    if (
+        exemplar_selection_method
+        is ExemplarSelectionMethod.AFFINITY_PROPAGATION
+    ):
+      data["embeddings"] = cls._generate_embeddings(
+          data["ad_markdown"].values.tolist(),
+          embedding_model_name=embedding_model_name,
+          dimensionality=dimensionality,
+          batch_size=embeddings_batch_size,
+          task_type="RETRIEVAL_DOCUMENT",
+          progress_bar=True,
+      )
+
+      ad_exemplars = cls._get_exemplars(
+          data,
+          embeddings_column="embeddings",
+          affinity_preference=affinity_preference,
+          max_exemplars=max_exemplar_ads,
+      )
+    elif exemplar_selection_method is ExemplarSelectionMethod.RANDOM:
+      if len(data) > max_exemplar_ads:
+        ad_exemplars = data.sample(max_exemplar_ads)
+      else:
+        ad_exemplars = data
+
+      ad_exemplars["embeddings"] = cls._generate_embeddings(
+          ad_exemplars["ad_markdown"].values.tolist(),
+          embedding_model_name=embedding_model_name,
+          dimensionality=dimensionality,
+          batch_size=embeddings_batch_size,
+          task_type="RETRIEVAL_DOCUMENT",
+          progress_bar=True,
+      )
+
+    else:
+      raise RuntimeError(
+          f"Unsupported exemplar selection method: {exemplar_selection_method}"
+      )
+
+    print(
+        f"Reduced {len(training_data)} total ads to"
+        f" {len(ad_exemplars)} exemplar ads."
+    )
 
     return cls(
-        vectorstore=community_vectorstores.SKLearnVectorStore.from_texts(
-            texts=texts,
-            embedding=embedding_model,
-            metadatas=metadata,
-            persist_path=str(path / SKLEARN_VECTORSTORE_FILE_NAME),
-            serializer="parquet",
-        ),
-        persist_path=persist_path,
         embedding_model_name=embedding_model_name,
+        ad_exemplars=ad_exemplars,
+        dimensionality=dimensionality,
+        embeddings_batch_size=embeddings_batch_size,
     )
 
   @classmethod
-  def load(cls, persist_path: str) -> "AdCopyVectorstore":
+  def load(cls, path: str) -> "AdCopyVectorstore":
     """Loads the vectorstore from the provided path."""
-    path = pathlib.Path(persist_path)
 
-    with open(path / VECTORSTORE_PARAMS_FILE_NAME, "r") as f:
+    with open(f"{path}/{VECTORSTORE_PARAMS_FILE_NAME}", "r") as f:
       params = json.load(f)
 
-    embedding_model = embedding_models.BatchedVertexAIEmbeddings(
-        model_name=params["embedding_model_name"]
-    )
-    params["vectorstore"] = community_vectorstores.SKLearnVectorStore(
-        embedding=embedding_model,
-        persist_path=str(path / SKLEARN_VECTORSTORE_FILE_NAME),
-        serializer="parquet",
-    )
-    params["persist_path"] = persist_path
     params["embedding_model_name"] = EmbeddingModelName(
         params["embedding_model_name"]
     )
+    params["ad_exemplars"] = pd.read_parquet(
+        f"{path}/{VECTORSTORE_AD_EXEMPLARS_FILE_NAME}"
+    )
+
     return cls(**params)
 
-  def write(self) -> None:
-    """Loads the vectorstore from the provided path."""
-    path = pathlib.Path(self.persist_path)
-    path.mkdir(parents=True, exist_ok=True)
+  def write(self, path: str) -> None:
+    """Writes the vectorstore to the provided path."""
 
-    params = {}
-    params["embedding_model_name"] = self.embedding_model_name.value
-
-    with open(path / VECTORSTORE_PARAMS_FILE_NAME, "w") as f:
+    params = {
+        "embedding_model_name": self.embedding_model_name.value,
+        "dimensionality": self.dimensionality,
+        "embeddings_batch_size": self.embeddings_batch_size,
+    }
+    with open(f"{path}/{VECTORSTORE_PARAMS_FILE_NAME}", "w") as f:
       json.dump(params, f)
 
-    self.vectorstore.persist()
+    self.ad_exemplars.to_parquet(
+        f"{path}/{VECTORSTORE_AD_EXEMPLARS_FILE_NAME}", index=False
+    )
+
+  @functools.cached_property
+  def nearest_neighbors(self) -> neighbors.NearestNeighbors:
+    """The nearest neighbors model used to find similar ads."""
+    embeddings = np.asarray(self.ad_exemplars["embeddings"].values.tolist())
+    model = neighbors.NearestNeighbors()
+    model.fit(embeddings)
+    return model
+
+  @functools.cached_property
+  def unique_headlines(self) -> set[str]:
+    return set(self.ad_exemplars["headlines"].explode().unique().tolist())
+
+  @functools.cached_property
+  def unique_descriptions(self) -> set[str]:
+    return set(self.ad_exemplars["descriptions"].explode().unique().tolist())
 
   @property
-  def max_fetch_k(self) -> int:
-    return len(self.vectorstore._ids)
+  def n_exemplars(self) -> int:
+    """The total number of exemplars in the vectorstore."""
+    return len(self.ad_exemplars)
 
   def get_relevant_ads(
-      self, query: str, k: int, fetch_k: int = 1000, lambda_mult: float = 0.5
-  ) -> list[tuple[str, GoogleAd]]:
+      self, queries: list[str], k: int
+  ) -> list[list[ExampleAd]]:
     """Returns the k most relevant ads for the provided query.
 
     The ads are retrieved from the vectorstore using the provided query. The
@@ -316,47 +471,38 @@ class AdCopyVectorstore:
     k most relevant ads.
 
     Args:
-      query: The query to use to retrieve the ads.
-      k: The number of ads to return.
-      fetch_k: The number of ads to fetch when constructing the prompt, before
-        filtering based on maximum marginal relevance.
-      lambda_mult: The lambda multiplier to use when filtering the in-context
-        examples. Controls the trade-off between similarity to the query and
-        similarity to the other examples. Must be between 0 (most variety in the
-        examples) to 1 (most similar to the query).
+      queries: The list of queries to use to retrieve the ads. These are
+        typically the keywords used to generate the ad copy.
+      k: The number of ads to return for each query.
 
     Returns:
-      The k most relavent pairs of keywords and ads.
+      The k most relavent ads for each query
     """
-    fetch_k = min(self.max_fetch_k, fetch_k)
+    k = min(self.n_exemplars, k)
 
-    query_embedding = np.asarray(self.vectorstore.embeddings.embed_query(query))
-    similar_documents_with_duplicates = self.vectorstore.similarity_search(
-        query, k=fetch_k
+    query_embeddings = self._generate_embeddings(
+        queries,
+        embedding_model_name=self.embedding_model_name,
+        dimensionality=self.dimensionality,
+        batch_size=self.embeddings_batch_size,
+        task_type="RETRIEVAL_QUERY",
+        progress_bar=False,
     )
-
-    similar_ads = list(
-        set([
-            (
-                doc.metadata["keywords"],
-                google_ads.GoogleAd(
-                    headlines=doc.metadata["headlines"],
-                    descriptions=doc.metadata["descriptions"],
-                ),
+    similar_ad_ids = self.nearest_neighbors.kneighbors(
+        query_embeddings, n_neighbors=k, return_distance=False
+    )
+    similar_ads = [
+        list(
+            map(
+                lambda x: ExampleAd.from_flat_values(**x),
+                self.ad_exemplars.iloc[ids][
+                    ["headlines", "descriptions", "keywords"]
+                ].to_dict("records"),
             )
-            for doc in similar_documents_with_duplicates
-        ])
-    )
-
-    document_embeddings = self.vectorstore.embeddings.embed_documents(
-        list(map(lambda x: str(x[1]), similar_ads))
-    )
-
-    idx = community_vectorstores.utils.maximal_marginal_relevance(
-        query_embedding, document_embeddings, lambda_mult=lambda_mult, k=k
-    )
-
-    return [similar_ads[i] for i in idx]
+        )
+        for ids in similar_ad_ids
+    ]
+    return similar_ads
 
 
 def _construct_new_ad_copy_user_message(
@@ -376,36 +522,6 @@ def _construct_new_ad_copy_user_message(
       role="user",
       parts=[generative_models.Part.from_text(content)],
   )
-
-
-def construct_examples_for_new_ad_copy_generation(
-    ad_documents: list[tuple[str, GoogleAd]],
-) -> list[generative_models.Content]:
-  """Creates the in-context examples for new ad copy generation.
-
-  Args:
-    ad_documents: The list of keywords and ad pairs to convert, sorted in order
-      of relevance.
-
-  Returns:
-    A list of in-context examples for new ad copy generation. This is a list of
-    messages, alternating between the keywords and expected response from each
-    ad document. The expected response is a json string containing the headlines
-    and descriptions of the ad copy. The messages are sorted so that the most
-    relevant examples are last. This ensures the model see's the most relevant
-    examples last, making them more likely to influence the model's output.
-  """
-  in_context_examples = []
-  for keywords, ad in reversed(ad_documents):
-    in_context_examples.append(_construct_new_ad_copy_user_message(keywords))
-    in_context_examples.append(
-        generative_models.Content(
-            role="model",
-            parts=[generative_models.Part.from_text(ad.model_dump_json())],
-        )
-    )
-
-  return in_context_examples
 
 
 def construct_system_instruction(
@@ -433,18 +549,24 @@ def construct_system_instruction(
 
 
 def construct_new_ad_copy_prompt(
-    in_context_example_content: list[generative_models.Content],
+    example_ads: list[ExampleAd],
     keywords: str,
     keywords_specific_instructions: str = "",
 ) -> list[generative_models.Content]:
   """Constructs the full copycat prompt for generating new ad copy.
 
-  The prompt consists of the system prompt, the in-context examples, and the
-  human message containing the keywords. It also includes instructions on how
-  to format the output.
+  The prompt consists of a list of in-context examples for new ad copy
+  generation. This is a list of messages, alternating between the keywords and
+  expected response from each example ad. The expected response is a json string
+  containing the headlines and descriptions of the ad copy. The messages are
+  sorted so that the most relevant examples are last. This ensures the model
+  see's the most relevant examples last, making them more likely to influence
+  the model's output. The final message contains the keywords to generate the ad
+  copy for, and the additional context for the new keywords from the
+  keywords_specific_instructions if it exists.
 
   Args:
-    in_context_example_content: The in-context examples to use.
+    example_ads: The list of example ads to use as in-context examples.
     keywords: The keywords to generate the ad copy for.
     keywords_specific_instructions: Any additional context to use for the new
       keywords. This could include things like information from the landing
@@ -454,10 +576,26 @@ def construct_new_ad_copy_prompt(
   Returns:
     A list of Content representing the prompt.
   """
-  content_specific_instructions = _construct_new_ad_copy_user_message(
-      keywords, keywords_specific_instructions
+  prompt = []
+  for example in reversed(example_ads):
+    prompt.append(_construct_new_ad_copy_user_message(example.keywords))
+    prompt.append(
+        generative_models.Content(
+            role="model",
+            parts=[
+                generative_models.Part.from_text(
+                    example.google_ad.model_dump_json()
+                )
+            ],
+        )
+    )
+
+  prompt.append(
+      _construct_new_ad_copy_user_message(
+          keywords, keywords_specific_instructions
+      )
   )
-  return in_context_example_content + [content_specific_instructions]
+  return prompt
 
 
 HashableTypeVar = TypeVar("HashableTypeVar", bound=Hashable)
@@ -539,7 +677,6 @@ def async_generate_google_ad_json(
   Returns:
     The generated response, which is a valid json representation of a GoogleAd.
   """
-
   model_name = ModelName(request.chat_model_name)
 
   generation_config_params = dict(
