@@ -16,7 +16,7 @@ import json
 
 from absl.testing import absltest
 from absl.testing import parameterized
-from google.cloud.aiplatform.vertexai import generative_models
+from vertexai import generative_models
 import pandas as pd
 
 from copycat.py import copycat

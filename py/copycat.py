@@ -22,7 +22,7 @@ import json
 from typing import Any
 import warnings
 
-from google.cloud.aiplatform.vertexai import generative_models
+from vertexai import generative_models
 import pandas as pd
 import pydantic
 

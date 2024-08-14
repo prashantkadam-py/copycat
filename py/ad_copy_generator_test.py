@@ -16,7 +16,7 @@ import textwrap
 
 from absl.testing import absltest
 from absl.testing import parameterized
-from google.cloud.aiplatform.vertexai import generative_models
+from vertexai import generative_models
 import mock
 import pandas as pd
 
@@ -230,7 +230,7 @@ class AdCopyVectorstoreTest(parameterized.TestCase):
     ])
 
     with mock.patch(
-        "google3.third_party.professional_services.solutions.copycat.py.ad_copy_generator.cluster.AffinityPropagation"
+        "copycat.py.ad_copy_generator.cluster.AffinityPropagation"
     ) as mock_affinity_propagation:
       (
           ad_copy_generator.AdCopyVectorstore.create_from_pandas(

@@ -16,8 +16,8 @@
 
 from typing import Any, Callable
 
-from google.cloud.aiplatform.vertexai import language_models
-from google.cloud.aiplatform.vertexai.generative_models import _generative_models as generative_models
+from vertexai import language_models
+from vertexai.generative_models import _generative_models as generative_models
 import mock
 import numpy as np
 import pandas as pd
@@ -84,7 +84,7 @@ class PatchEmbeddingsModel:
 
     self.mock_embeddings_model.get_embeddings.side_effect = random_embeddings
     self._from_pretrained_patcher = mock.patch(
-        "google.cloud.aiplatform.vertexai.language_models.TextEmbeddingModel.from_pretrained",
+        "vertexai.language_models.TextEmbeddingModel.from_pretrained",
         return_value=self.mock_embeddings_model,
     )
 
@@ -163,7 +163,7 @@ class PatchGenerativeModel:
     )
 
     self._model_init_patcher = mock.patch(
-        "google.cloud.aiplatform.vertexai.generative_models.GenerativeModel",
+        "vertexai.generative_models.GenerativeModel",
         return_value=self.mock_generative_model,
     )
 

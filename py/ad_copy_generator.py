@@ -20,8 +20,8 @@ import functools
 import json
 from typing import Any, AsyncIterable, Coroutine, Hashable, TypeVar
 
-from google.cloud.aiplatform.vertexai import generative_models
-from google.cloud.aiplatform.vertexai import language_models
+from vertexai import generative_models
+from vertexai import language_models
 import numpy as np
 import pandas as pd
 import pydantic
