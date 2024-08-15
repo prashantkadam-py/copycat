@@ -15,7 +15,7 @@
 from absl.testing import absltest
 from absl.testing import parameterized
 
-from copycat.py import google_ads
+from copycat import google_ads
 
 
 class GoogleAdTest(parameterized.TestCase):

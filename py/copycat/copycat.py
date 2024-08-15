@@ -26,9 +26,9 @@ from vertexai import generative_models
 import pandas as pd
 import pydantic
 
-from copycat.py import ad_copy_evaluator
-from copycat.py import ad_copy_generator
-from copycat.py import google_ads
+from copycat import ad_copy_evaluator
+from copycat import ad_copy_generator
+from copycat import google_ads
 
 GoogleAd = google_ads.GoogleAd
 GoogleAdFormat = google_ads.GoogleAdFormat

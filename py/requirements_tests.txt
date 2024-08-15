@@ -12,4 +12,5 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""A python library to generate ad copy that matches an advertisers style."""
+mock
+absl_py

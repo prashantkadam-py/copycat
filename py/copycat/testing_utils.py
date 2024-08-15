@@ -22,8 +22,8 @@ import mock
 import numpy as np
 import pandas as pd
 
-from copycat.py import ad_copy_generator
-from copycat.py import copycat
+from copycat import ad_copy_generator
+from copycat import copycat
 
 
 GenerationConfigType = generative_models.GenerationConfigType

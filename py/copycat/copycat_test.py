@@ -19,9 +19,9 @@ from absl.testing import parameterized
 from vertexai import generative_models
 import pandas as pd
 
-from copycat.py import copycat
-from copycat.py import google_ads
-from copycat.py import testing_utils
+from copycat import copycat
+from copycat import google_ads
+from copycat import testing_utils
 
 
 class CopycatResponseTest(parameterized.TestCase):

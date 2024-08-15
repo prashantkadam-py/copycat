@@ -29,7 +29,7 @@ from sklearn import cluster
 from sklearn import neighbors
 import tqdm.autonotebook as tqdm
 
-from copycat.py import google_ads
+from copycat import google_ads
 
 
 AsyncGenerationResponse = Coroutine[

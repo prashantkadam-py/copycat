@@ -17,10 +17,10 @@ from absl.testing import parameterized
 import mock
 import pandas as pd
 
-from copycat.py import ad_copy_evaluator
-from copycat.py import ad_copy_generator
-from copycat.py import google_ads
-from copycat.py import testing_utils
+from copycat import ad_copy_evaluator
+from copycat import ad_copy_generator
+from copycat import google_ads
+from copycat import testing_utils
 
 
 class AdCopyEvaluatorTest(parameterized.TestCase):

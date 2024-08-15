@@ -20,9 +20,9 @@ from vertexai import generative_models
 import mock
 import pandas as pd
 
-from copycat.py import ad_copy_generator
-from copycat.py import google_ads
-from copycat.py import testing_utils
+from copycat import ad_copy_generator
+from copycat import google_ads
+from copycat import testing_utils
 
 
 def mock_training_data(
@@ -230,7 +230,7 @@ class AdCopyVectorstoreTest(parameterized.TestCase):
     ])
 
     with mock.patch(
-        "copycat.py.ad_copy_generator.cluster.AffinityPropagation"
+        "google3.third_party.professional_services.solutions.copycat.ad_copy_generator.cluster.AffinityPropagation"
     ) as mock_affinity_propagation:
       (
           ad_copy_generator.AdCopyVectorstore.create_from_pandas(

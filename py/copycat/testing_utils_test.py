@@ -18,7 +18,7 @@ from vertexai import generative_models
 from vertexai import language_models
 import pandas as pd
 
-from copycat.py import testing_utils
+from copycat import testing_utils
 
 
 ad_copy_generator = testing_utils.ad_copy_generator
