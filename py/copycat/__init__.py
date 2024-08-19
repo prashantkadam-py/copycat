@@ -21,12 +21,12 @@ CopycatResponse = copycat.CopycatResponse
 
 GoogleAd = copycat.GoogleAd
 GoogleAdFormat = copycat.GoogleAdFormat
-EvaluationMetrics = copycat.EvaluationMetrics
 ValidationError = copycat.ValidationError
 ModelName = copycat.ModelName
 EmbeddingModelName = copycat.EmbeddingModelName
 TextGenerationRequest = copycat.TextGenerationRequest
 ExemplarSelectionMethod = copycat.ExemplarSelectionMethod
+EvaluationResults = copycat.EvaluationResults
 
 HarmCategory = copycat.generative_models.HarmCategory
 HarmBlockThreshold = copycat.generative_models.HarmBlockThreshold

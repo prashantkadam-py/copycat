@@ -31,24 +31,13 @@ class EvaluationResults(pydantic.BaseModel):
   descriptions_are_memorised: bool | None
   errors: list[str]
   warnings: list[str]
+  style_similarity: float | None
+  keyword_similarity: float | None
 
 
-class EvaluationMetrics(pydantic.BaseModel):
-  """Similarity between the generated ad and the training data and keywords."""
-
-  style_similarity: float = pydantic.Field(
-      ge=0.0,
-      le=1.0,
-      description=(
-          "How similar the style of the generated ad is to the style of the"
-          " training ads."
-      ),
-  )
-  keyword_similarity: float = pydantic.Field(
-      ge=0.0,
-      le=1.0,
-      description="How similar the generated ad is to the keywords.",
-  )
+def _normalize_cosine_similarity(similarity: float) -> float:
+  """Converts the cosine similarity to a value between 0 and 1."""
+  return min(max((1.0 + similarity) / 2.0, 0.0), 1.0)
 
 
 @dataclasses.dataclass
@@ -57,13 +46,26 @@ class AdCopyEvaluator:
 
   Attributes:
     ad_format: The ad format.
+    ad_copy_vectorstore: The vectorstore containing the training ads, if
+      provided. Defaults to None.
     training_headlines: The headlines in the training data.
     training_descriptions: The descriptions in the training data.
   """
 
   ad_format: GoogleAdFormat
-  training_headlines: set[str]
-  training_descriptions: set[str]
+  ad_copy_vectorstore: ad_copy_generator.AdCopyVectorstore | None = None
+
+  @property
+  def training_headlines(self) -> set[str]:
+    if self.ad_copy_vectorstore is None:
+      return set()
+    return self.ad_copy_vectorstore.unique_headlines
+
+  @property
+  def training_descriptions(self) -> set[str]:
+    if self.ad_copy_vectorstore is None:
+      return set()
+    return self.ad_copy_vectorstore.unique_descriptions
 
   def has_valid_number_of_headlines(self, ad_copy: GoogleAd) -> bool:
     """Returns true if the number of headlines is valid.
@@ -122,7 +124,7 @@ class AdCopyEvaluator:
         <= self.ad_format.max_description_length
         for description in ad_copy.descriptions
     )
-    
+
   def has_unique_headlines(self, ad_copy: GoogleAd) -> bool:
     """Returns true if there are no duplicate headlines.
 
@@ -203,12 +205,69 @@ class AdCopyEvaluator:
 
     return not (set(ad_copy.descriptions) - self.training_descriptions)
 
+  def calculate_similarity_metrics(
+      self,
+      *,
+      ad_copy: GoogleAd,
+      keywords: str,
+  ) -> dict[str, float]:
+    """Evaluates the generated ad copy against the training data and keywords.
+
+    This calculates two metrics:
+      - The style similarity, which is how similar the style of the generated ad
+        is to the style of the training ads. It is calculated as the similarity
+        of the generated ad to the most similar training ad.
+      - The keyword similarity, which is how similar the generated ad is to the
+        keywords.
+
+    The similarity in both cases is calculated using the cosine similarity, and
+    normalising it between 0 and 1, so 0 is the least similar and 1 is the most
+    similar.
+
+    If the vectorstore is not provided, this will return an empty dict.
+
+    Args:
+      ad_copy: The generated ad.
+      keywords: The keywords used to generate the ad.
+
+    Returns:
+      A dict containing the style_similarity and keyword_similarity.
+    """
+    if self.ad_copy_vectorstore is None:
+      return dict()
+
+    keywords_embedding = self.ad_copy_vectorstore.embed_queries([keywords])
+    ad_embedding = self.ad_copy_vectorstore.embed_documents([str(ad_copy)])
+
+    keyword_similarity = _normalize_cosine_similarity(
+        pairwise.cosine_similarity(keywords_embedding, ad_embedding)[0][0]
+    )
+
+    most_similar_training_ad = self.ad_copy_vectorstore.get_relevant_ads(
+        [str(ad_copy)], k=1
+    )[0][0]
+    similar_training_ad_embeddings = self.ad_copy_vectorstore.embed_documents(
+        [str(most_similar_training_ad.google_ad)]
+    )
+
+    style_similarity = _normalize_cosine_similarity(
+        pairwise.cosine_similarity(
+            similar_training_ad_embeddings, ad_embedding
+        )[0][0]
+    )
+
+    return {
+        "style_similarity": style_similarity,
+        "keyword_similarity": keyword_similarity,
+    }
+
   def evaluate(
       self,
       ad_copy: GoogleAd,
       *,
       allow_memorised_headlines: bool = False,
       allow_memorised_descriptions: bool = False,
+      keywords: str | None = None
   ) -> EvaluationResults:
     """Evaluates the generated ad copy.
 
@@ -217,6 +276,9 @@ class AdCopyEvaluator:
       allow_memorised_headlines: Whether to allow the headlines to be memorised.
       allow_memorised_descriptions: Whether to allow the descriptions to be
         memorised.
+      keywords: The keywords used to generate the ad. Only required for the
+        style and keyword similarity metrics. If not provided, these metrics
+        will be None.
 
     Returns:
       The evaluation results.
@@ -253,69 +315,18 @@ class AdCopyEvaluator:
       else:
         errors.append("All descriptions are memorised from the training data.")
 
+    if keywords is None or self.is_underpopulated(ad_copy):
+      similarity_metrics = {}
+    else:
+      similarity_metrics = self.calculate_similarity_metrics(
+          ad_copy=ad_copy, keywords=keywords
+      )
+
     return EvaluationResults(
         errors=errors,
         warnings=warnings,
         headlines_are_memorised=headlines_are_memorised,
         descriptions_are_memorised=descriptions_are_memorised,
+        keyword_similarity=similarity_metrics.get("keyword_similarity"),
+        style_similarity=similarity_metrics.get("style_similarity"),
     )
-
-
-def _normalize_cosine_similarity(similarity: float) -> float:
-  """Converts the cosine similarity to a value between 0 and 1."""
-  return min(max((1.0 + similarity) / 2.0, 0.0), 1.0)
-
-
-def evaluate_ad_copy(
-    *,
-    google_ad: GoogleAd,
-    keywords: str,
-    ad_copy_vectorstore: ad_copy_generator.AdCopyVectorstore,
-) -> EvaluationMetrics:
-  """Evaluates the ad copy against the training data and keywords.
-
-  This calculates two metrics:
-    - The style similarity, which is how similar the style of the generated ad
-      is to the style of the training ads. It is calculated by finding the 5
-      most similar training ads to the generated ad, and averageing their
-      similarity scores.
-    - The keyword similarity, which is how similar the generated ad is to the
-      keywords.
-
-  The similarity in both cases is calculated using the cosine similarity, and
-  normalising it between 0 and 1, so 0 is the least similar and 1 is the most
-  similar.
-
-  Args:
-    google_ad: The generated ad.
-    keywords: The keywords used to generate the ad.
-    ad_copy_vectorstore: The vector store containing the training ads.
-
-  Returns:
-    The evaluation metrics.
-
-  Raises:
-    RuntimeError: If the vector store does not have an embeddings attribute.
-  """
-  keywords_embedding = ad_copy_vectorstore.embed_queries([keywords])[0]
-  ad_embedding = ad_copy_vectorstore.embed_documents([str(google_ad)])[0]
-
-  keyword_similarity = _normalize_cosine_similarity(
-      pairwise.cosine_similarity([keywords_embedding], [ad_embedding])[0][0]
-  )
-
-  relevant_ads = ad_copy_vectorstore.get_relevant_ads([str(google_ad)], k=5)[0]
-  similar_training_ad_embeddings = ad_copy_vectorstore.embed_documents(
-      [str(example.google_ad) for example in relevant_ads]
-  )
-
-  style_similarity = _normalize_cosine_similarity(
-      pairwise.cosine_similarity(
-          similar_training_ad_embeddings, [ad_embedding]
-      ).mean()
-  )
-
-  return EvaluationMetrics(
-      style_similarity=style_similarity,
-      keyword_similarity=keyword_similarity,
-  )

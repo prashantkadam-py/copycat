@@ -39,9 +39,9 @@ class CopycatResponseTest(parameterized.TestCase):
         keywords=self.keywords,
     )
 
-  @parameterized.parameters([("", True), ("Non empty error message", False)])
+  @parameterized.parameters([([], True), (["Non empty error message"], False)])
   def test_success_is_false_if_there_is_an_error_message(
-      self, error_message, expected_success
+      self, errors, expected_success
   ):
     generated_google_ad = google_ads.GoogleAd(
         headlines=["New headline 1", "New headline 2"],
@@ -51,11 +51,46 @@ class CopycatResponseTest(parameterized.TestCase):
     response = copycat.CopycatResponse(
         google_ad=generated_google_ad,
         keywords=self.keywords,
-        headlines_are_memorised=False,
-        descriptions_are_memorised=False,
-        error_message=error_message,
+        evaluation_results=copycat.EvaluationResults(
+            headlines_are_memorised=False,
+            descriptions_are_memorised=False,
+            style_similarity=None,
+            keyword_similarity=None,
+            errors=errors,
+            warnings=[],
+        ),
     )
     self.assertEqual(response.success, expected_success)
+
+  @parameterized.parameters([
+      ([], ""),
+      (["One error message"], "- One error message"),
+      (
+          ["Two error message", "Two error message (b)"],
+          "- Two error message\n- Two error message (b)",
+      ),
+  ])
+  def test_error_message_is_created_by_joining_errors(
+      self, errors, expected_error_message
+  ):
+    generated_google_ad = google_ads.GoogleAd(
+        headlines=["New headline 1", "New headline 2"],
+        descriptions=["New description"],
+    )
+
+    response = copycat.CopycatResponse(
+        google_ad=generated_google_ad,
+        keywords=self.keywords,
+        evaluation_results=copycat.EvaluationResults(
+            headlines_are_memorised=False,
+            descriptions_are_memorised=False,
+            style_similarity=None,
+            keyword_similarity=None,
+            errors=errors,
+            warnings=[],
+        ),
+    )
+    self.assertEqual(response.error_message, expected_error_message)
 
 
 class CopycatTest(parameterized.TestCase):
@@ -427,12 +462,13 @@ class CopycatTest(parameterized.TestCase):
                 headlines=["generated headline 1", "generated headline 2"],
                 descriptions=["generated description"],
             ),
-            headlines_are_memorised=False,
-            descriptions_are_memorised=False,
             keywords="my keyword 1, my keyword 2",
-            error_message="",
-            evaluation_metrics=copycat.EvaluationMetrics(
-                style_similarity=0.5049241734655925,
+            evaluation_results=copycat.EvaluationResults(
+                errors=[],
+                warnings=[],
+                headlines_are_memorised=False,
+                descriptions_are_memorised=False,
+                style_similarity=0.5208610332526543,
                 keyword_similarity=0.5209703590026296,
             ),
         ),
@@ -491,16 +527,21 @@ class CopycatTest(parameterized.TestCase):
         response,
         copycat.CopycatResponse(
             keywords="my keyword 1, my keyword 2",
-            error_message=(
-                "- 1 validation error for GoogleAd\n  Invalid JSON: expected"
-                " ident at line 1 column 2 [type=json_invalid, input_value='not"
-                " a json', input_type=str]\n    For further information visit"
-                " https://errors.pydantic.dev/2.6/v/json_invalid"
-            ),
             google_ad=google_ads.GoogleAd(headlines=[], descriptions=[]),
-            headlines_are_memorised=None,
-            descriptions_are_memorised=None,
-            evaluation_metrics=None,
+            evaluation_results=copycat.EvaluationResults(
+                errors=[
+                    "1 validation error for GoogleAd\n  Invalid JSON: expected"
+                    " ident at line 1 column 2 [type=json_invalid,"
+                    " input_value='not a json', input_type=str]\n    For"
+                    " further information visit"
+                    " https://errors.pydantic.dev/2.6/v/json_invalid"
+                ],
+                warnings=[],
+                headlines_are_memorised=None,
+                descriptions_are_memorised=None,
+                style_similarity=None,
+                keyword_similarity=None,
+            ),
         ),
     )
 
@@ -510,7 +551,7 @@ class CopycatTest(parameterized.TestCase):
           headlines=["generated headline"],
           descriptions=["a" * 91],
           expected_error_message=(
-              "- Invalid number of descriptions for the ad format."
+              "Invalid number of descriptions for the ad format."
           ),
           expected_headlines_are_memorised=False,
           expected_descriptions_are_memorised=False,
@@ -522,7 +563,7 @@ class CopycatTest(parameterized.TestCase):
           headlines=["a" * 31],
           descriptions=["generated description"],
           expected_error_message=(
-              "- Invalid number of headlines for the ad format."
+              "Invalid number of headlines for the ad format."
           ),
           expected_headlines_are_memorised=False,
           expected_descriptions_are_memorised=False,
@@ -534,7 +575,7 @@ class CopycatTest(parameterized.TestCase):
           headlines=["train headline 1"],
           descriptions=["generated description"],
           expected_error_message=(
-              "- All headlines are memorised from the training data."
+              "All headlines are memorised from the training data."
           ),
           expected_headlines_are_memorised=True,
           expected_descriptions_are_memorised=False,
@@ -546,7 +587,7 @@ class CopycatTest(parameterized.TestCase):
           headlines=["generated headline"],
           descriptions=["train description 1"],
           expected_error_message=(
-              "- All descriptions are memorised from the training data."
+              "All descriptions are memorised from the training data."
           ),
           expected_headlines_are_memorised=False,
           expected_descriptions_are_memorised=True,
@@ -590,25 +631,29 @@ class CopycatTest(parameterized.TestCase):
           allow_memorised_descriptions=False,
       )[0]
 
+      # I don't want to test the similarity metrics here, so I'm just setting
+      # them to None.
+      response.evaluation_results.style_similarity = None
+      response.evaluation_results.keyword_similarity = None
+
       expected_google_ad = google_ads.GoogleAd(
           headlines=expected_headlines,
           descriptions=expected_descriptions,
       )
-
-      self.assertEqual(
-          (
-              response.google_ad,
-              response.headlines_are_memorised,
-              response.descriptions_are_memorised,
-              response.error_message,
-          ),
-          (
-              expected_google_ad,
-              expected_headlines_are_memorised,
-              expected_descriptions_are_memorised,
-              expected_error_message,
+      expected_response = copycat.CopycatResponse(
+          google_ad=expected_google_ad,
+          keywords="my keyword 1, my keyword 2",
+          evaluation_results=copycat.EvaluationResults(
+              errors=[expected_error_message],
+              warnings=[],
+              headlines_are_memorised=expected_headlines_are_memorised,
+              descriptions_are_memorised=expected_descriptions_are_memorised,
+              style_similarity=None,
+              keyword_similarity=None,
           ),
       )
+
+      self.assertEqual(response, expected_response)
 
   def test_generate_new_ad_copy_returns_expected_response_if_chat_model_fails_to_generate(
       self,
@@ -643,20 +688,20 @@ class CopycatTest(parameterized.TestCase):
           headlines=[],
           descriptions=[],
       )
-      self.assertEqual(
-          (
-              response.google_ad,
-              response.headlines_are_memorised,
-              response.descriptions_are_memorised,
-              response.error_message,
-          ),
-          (
-              expected_google_ad,
-              None,
-              None,
-              f"- {failed_response.candidates[0]}",
+
+      expected_response = copycat.CopycatResponse(
+          google_ad=expected_google_ad,
+          keywords="my keyword 1, my keyword 2",
+          evaluation_results=copycat.EvaluationResults(
+              errors=[str(failed_response.candidates[0])],
+              warnings=[],
+              headlines_are_memorised=None,
+              descriptions_are_memorised=None,
+              style_similarity=None,
+              keyword_similarity=None,
           ),
       )
+      self.assertEqual(response, expected_response)
 
   def test_write_and_load_loads_the_same_copycat_instance(self):
 

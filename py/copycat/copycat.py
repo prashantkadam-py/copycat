@@ -32,12 +32,12 @@ from copycat import google_ads
 
 GoogleAd = google_ads.GoogleAd
 GoogleAdFormat = google_ads.GoogleAdFormat
-EvaluationMetrics = ad_copy_evaluator.EvaluationMetrics
 ValidationError = pydantic.ValidationError
 ModelName = ad_copy_generator.ModelName
 EmbeddingModelName = ad_copy_generator.EmbeddingModelName
 TextGenerationRequest = ad_copy_generator.TextGenerationRequest
 ExemplarSelectionMethod = ad_copy_generator.ExemplarSelectionMethod
+EvaluationResults = ad_copy_evaluator.EvaluationResults
 
 # Below are not used in this file, they are included for the user to easily
 # adjust the safety settings in copycat without having to import
@@ -71,24 +71,26 @@ class CopycatResponse(pydantic.BaseModel):
   Attributes:
     google_ad: The generated ad.
     keywords: The keywords used to generate the ad, as a comma separated string.
-    headline_is_memorised: Whether the headline is memorised.
-    description_is_memorised: Whether the description is memorised.
+    evaluation_results: The evaluation results of the ad, including whether it
+      is memorised from the training data, and it's style and keyword similarity
+      metrics.
     success: Whether the generation was successful.
     error_message: The error message if the generation was not successful.
-    evaluation_metrics: The metrics used to evaluate the model. Defaults to None
-      if the evaluation has not been performed.
   """
 
   google_ad: GoogleAd
   keywords: str
-  headlines_are_memorised: bool | None
-  descriptions_are_memorised: bool | None
-  error_message: str
-  evaluation_metrics: EvaluationMetrics | None = None
+  evaluation_results: ad_copy_evaluator.EvaluationResults
 
   @property
   def success(self) -> bool:
     return not self.error_message
+
+  @property
+  def error_message(self) -> str:
+    return "\n".join(
+        map(lambda x: f"- {x}", sorted(self.evaluation_results.errors))
+    )
 
 
 @dataclasses.dataclass
@@ -112,8 +114,7 @@ class Copycat:
   def ad_copy_evaluator(self) -> ad_copy_evaluator.AdCopyEvaluator:
     return ad_copy_evaluator.AdCopyEvaluator(
         self.ad_format,
-        training_headlines=self.ad_copy_vectorstore.unique_headlines,
-        training_descriptions=self.ad_copy_vectorstore.unique_descriptions,
+        ad_copy_vectorstore=self.ad_copy_vectorstore,
     )
 
   @classmethod
@@ -140,9 +141,7 @@ class Copycat:
       ValueError: If there are invalid ads in the training data and
         on_invalid_ad is "raise".
     """
-    evaluator = ad_copy_evaluator.AdCopyEvaluator(
-        ad_format, training_headlines=set(), training_descriptions=set()
-    )
+    evaluator = ad_copy_evaluator.AdCopyEvaluator(ad_format)
 
     if on_invalid_ad not in ["raise", "skip", "drop"]:
       raise ValueError(
@@ -315,17 +314,25 @@ class Copycat:
       A CopycatResponse object.
     """
     empty_ad_copy = GoogleAd(headlines=[], descriptions=[])
+    empty_evaluation_results = ad_copy_evaluator.EvaluationResults(
+        errors=[],
+        warnings=[],
+        headlines_are_memorised=None,
+        descriptions_are_memorised=None,
+        keyword_similarity=None,
+        style_similarity=None,
+    )
 
     responses = []
     for keywords_i, raw_ad_i in zip(keywords, raw_generated_ads):
       if raw_ad_i.finish_reason is not ad_copy_generator.FinishReason.STOP:
         responses.append(
             CopycatResponse(
-                google_ad=empty_ad_copy,
+                google_ad=empty_ad_copy.model_copy(),
                 keywords=keywords_i,
-                headlines_are_memorised=None,
-                descriptions_are_memorised=None,
-                error_message=f"- {raw_ad_i}",
+                evaluation_results=empty_evaluation_results.model_copy(
+                    update=dict(errors=[str(raw_ad_i)])
+                ),
             )
         )
         continue
@@ -337,9 +344,9 @@ class Copycat:
             CopycatResponse(
                 google_ad=empty_ad_copy,
                 keywords=keywords_i,
-                headlines_are_memorised=None,
-                descriptions_are_memorised=None,
-                error_message=f"- {e}",
+                evaluation_results=empty_evaluation_results.model_copy(
+                    update=dict(errors=[str(e)])
+                ),
             )
         )
         continue
@@ -352,32 +359,18 @@ class Copycat:
           ad_copy,
           allow_memorised_headlines=allow_memorised_headlines,
           allow_memorised_descriptions=allow_memorised_descriptions,
+          keywords=keywords_i,
       )
 
       responses.append(
           CopycatResponse(
               google_ad=ad_copy,
               keywords=keywords_i,
-              headlines_are_memorised=evaluation_results.headlines_are_memorised,
-              descriptions_are_memorised=evaluation_results.descriptions_are_memorised,
-              error_message="\n".join(
-                  map(lambda x: f"- {x}", sorted(evaluation_results.errors))
-              ),
+              evaluation_results=evaluation_results,
           )
       )
 
     return responses
-
-  def evaluate_valid_ad_copies(self, responses: list[CopycatResponse]) -> None:
-    """Adds the evaluations of the ad copies to the responses in place."""
-
-    for response in responses:
-      if not self.ad_copy_evaluator.is_underpopulated(response.google_ad):
-        response.evaluation_metrics = ad_copy_evaluator.evaluate_ad_copy(
-            google_ad=response.google_ad,
-            keywords=response.keywords,
-            ad_copy_vectorstore=self.ad_copy_vectorstore,
-        )
 
   def construct_text_generation_requests_for_new_ad_copy(
       self,
@@ -557,8 +550,6 @@ class Copycat:
         allow_memorised_headlines=allow_memorised_headlines,
         allow_memorised_descriptions=allow_memorised_descriptions,
     )
-
-    self.evaluate_valid_ad_copies(responses)
 
     if len(responses) != len(keywords):
       raise RuntimeError(

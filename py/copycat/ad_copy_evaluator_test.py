@@ -63,22 +63,26 @@ class AdCopyEvaluatorTest(parameterized.TestCase):
     super().tearDown()
     self.embedding_model_patcher.stop()
 
-  def test_evaluation_metrics_are_calculated_correctly(self):
+  def test_similarity_metrics_are_calculated_correctly(self):
+    evaluator = ad_copy_evaluator.AdCopyEvaluator(
+        self.ad_format,
+        ad_copy_vectorstore=self.ad_copy_vectorstore,
+    )
+
     generated_ad = google_ads.GoogleAd(
         headlines=["generated headline"], descriptions=["generated description"]
     )
 
-    actual_metrics = ad_copy_evaluator.evaluate_ad_copy(
-        google_ad=generated_ad,
+    actual_metrics = evaluator.calculate_similarity_metrics(
+        ad_copy=generated_ad,
         keywords="keyword 1, keyword 2",
-        ad_copy_vectorstore=self.ad_copy_vectorstore,
     )
 
-    expected_metrics = ad_copy_evaluator.EvaluationMetrics(
-        style_similarity=0.47856515971549163,
+    expected_metrics = dict(
+        style_similarity=0.47552919560639856,
         keyword_similarity=0.46178879468508377,
     )
-    self.assertEqual(actual_metrics, expected_metrics)
+    self.assertDictEqual(actual_metrics, expected_metrics)
 
   @parameterized.named_parameters([
       {
@@ -98,9 +102,7 @@ class AdCopyEvaluatorTest(parameterized.TestCase):
       },
   ])
   def test_has_valid_number_of_headlines(self, n_headlines, expected_response):
-    evaluator = ad_copy_evaluator.AdCopyEvaluator(
-        self.ad_format, training_headlines=set(), training_descriptions=set()
-    )
+    evaluator = ad_copy_evaluator.AdCopyEvaluator(self.ad_format)
 
     google_ad = google_ads.GoogleAd(
         headlines=["Headline 1"] * n_headlines,
@@ -131,9 +133,7 @@ class AdCopyEvaluatorTest(parameterized.TestCase):
   def test_has_valid_number_of_descriptions(
       self, n_descriptions, expected_response
   ):
-    evaluator = ad_copy_evaluator.AdCopyEvaluator(
-        self.ad_format, training_headlines=set(), training_descriptions=set()
-    )
+    evaluator = ad_copy_evaluator.AdCopyEvaluator(self.ad_format)
 
     google_ad = google_ads.GoogleAd(
         headlines=["Headline 1"],
@@ -167,9 +167,7 @@ class AdCopyEvaluatorTest(parameterized.TestCase):
       },
   ])
   def test_has_valid_headline_lengths(self, headline, expected_response):
-    evaluator = ad_copy_evaluator.AdCopyEvaluator(
-        self.ad_format, training_headlines=set(), training_descriptions=set()
-    )
+    evaluator = ad_copy_evaluator.AdCopyEvaluator(self.ad_format)
 
     google_ad = google_ads.GoogleAd(
         headlines=[headline, "headline 2"],
@@ -203,9 +201,7 @@ class AdCopyEvaluatorTest(parameterized.TestCase):
       },
   ])
   def test_has_valid_description_lengths(self, description, expected_response):
-    evaluator = ad_copy_evaluator.AdCopyEvaluator(
-        self.ad_format, training_headlines=set(), training_descriptions=set()
-    )
+    evaluator = ad_copy_evaluator.AdCopyEvaluator(self.ad_format)
 
     google_ad = google_ads.GoogleAd(
         headlines=["Headline 1", "headline 2"],
@@ -228,9 +224,7 @@ class AdCopyEvaluatorTest(parameterized.TestCase):
         failing_check,
         return_value=False,
     ):
-      evaluator = ad_copy_evaluator.AdCopyEvaluator(
-          self.ad_format, training_headlines=set(), training_descriptions=set()
-      )
+      evaluator = ad_copy_evaluator.AdCopyEvaluator(self.ad_format)
       google_ad = google_ads.GoogleAd(
           headlines=["Headline 1", "Headline 2"],
           descriptions=["Description 1.", "Description 2."],
@@ -272,9 +266,7 @@ class AdCopyEvaluatorTest(parameterized.TestCase):
   def test_is_complete_checks_if_headlines_and_descriptions_are_full(
       self, n_headlines, n_descriptions, expected_response
   ):
-    evaluator = ad_copy_evaluator.AdCopyEvaluator(
-        self.ad_format, training_headlines=set(), training_descriptions=set()
-    )
+    evaluator = ad_copy_evaluator.AdCopyEvaluator(self.ad_format)
     google_ad = google_ads.GoogleAd(
         headlines=list(map(str, range(n_headlines))),
         descriptions=list(map(str, range(n_descriptions))),
@@ -311,9 +303,7 @@ class AdCopyEvaluatorTest(parameterized.TestCase):
   def test_is_underpopulated_checks_if_too_few_headlines_or_descriptions(
       self, n_headlines, n_descriptions, expected_response
   ):
-    evaluator = ad_copy_evaluator.AdCopyEvaluator(
-        self.ad_format, training_headlines=set(), training_descriptions=set()
-    )
+    evaluator = ad_copy_evaluator.AdCopyEvaluator(self.ad_format)
 
     google_ad = google_ads.GoogleAd(
         headlines=list(map(str, range(n_headlines))),
@@ -325,8 +315,8 @@ class AdCopyEvaluatorTest(parameterized.TestCase):
   @parameterized.named_parameters(
       dict(
           testcase_name="not memorised",
-          generated_headlines=["new headline", "training headline 1"],
-          generated_descriptions=["new description", "training description 1"],
+          generated_headlines=["new headline", "train headline 1"],
+          generated_descriptions=["new description", "train description 1"],
           allow_memorised_headlines=False,
           allow_memorised_descriptions=False,
           expected_headlines_are_memorised=False,
@@ -335,8 +325,8 @@ class AdCopyEvaluatorTest(parameterized.TestCase):
       ),
       dict(
           testcase_name="headline memorised but allowed",
-          generated_headlines=["training headline 1"],
-          generated_descriptions=["new description", "training description 1"],
+          generated_headlines=["train headline 1"],
+          generated_descriptions=["new description", "train description 1"],
           allow_memorised_headlines=True,
           allow_memorised_descriptions=False,
           expected_headlines_are_memorised=True,
@@ -345,8 +335,8 @@ class AdCopyEvaluatorTest(parameterized.TestCase):
       ),
       dict(
           testcase_name="headline memorised but not allowed",
-          generated_headlines=["training headline 1"],
-          generated_descriptions=["new description", "training description 1"],
+          generated_headlines=["train headline 1"],
+          generated_descriptions=["new description", "train description 1"],
           allow_memorised_headlines=False,
           allow_memorised_descriptions=False,
           expected_headlines_are_memorised=True,
@@ -357,8 +347,8 @@ class AdCopyEvaluatorTest(parameterized.TestCase):
       ),
       dict(
           testcase_name="description memorised but allowed",
-          generated_headlines=["new headline", "training headline 1"],
-          generated_descriptions=["training description 1"],
+          generated_headlines=["new headline", "train headline 1"],
+          generated_descriptions=["train description 1"],
           allow_memorised_headlines=False,
           allow_memorised_descriptions=True,
           expected_headlines_are_memorised=False,
@@ -367,8 +357,8 @@ class AdCopyEvaluatorTest(parameterized.TestCase):
       ),
       dict(
           testcase_name="description memorised but not allowed",
-          generated_headlines=["new headline", "training headline 1"],
-          generated_descriptions=["training description 1"],
+          generated_headlines=["new headline", "train headline 1"],
+          generated_descriptions=["train description 1"],
           allow_memorised_headlines=False,
           allow_memorised_descriptions=False,
           expected_headlines_are_memorised=False,
@@ -379,8 +369,8 @@ class AdCopyEvaluatorTest(parameterized.TestCase):
       ),
       dict(
           testcase_name="both memorised but allowed",
-          generated_headlines=["training headline 1"],
-          generated_descriptions=["training description 1"],
+          generated_headlines=["train headline 1"],
+          generated_descriptions=["train description 1"],
           allow_memorised_headlines=True,
           allow_memorised_descriptions=True,
           expected_headlines_are_memorised=True,
@@ -389,8 +379,8 @@ class AdCopyEvaluatorTest(parameterized.TestCase):
       ),
       dict(
           testcase_name="both memorised but not allowed",
-          generated_headlines=["training headline 1"],
-          generated_descriptions=["training description 1"],
+          generated_headlines=["train headline 1"],
+          generated_descriptions=["train description 1"],
           allow_memorised_headlines=False,
           allow_memorised_descriptions=False,
           expected_headlines_are_memorised=True,
@@ -421,9 +411,7 @@ class AdCopyEvaluatorTest(parameterized.TestCase):
         max_description_length=90,
     )
     evaluator = ad_copy_evaluator.AdCopyEvaluator(
-        test_ad_foramt,
-        training_headlines={"training headline 1"},
-        training_descriptions={"training description 1"},
+        test_ad_foramt, self.ad_copy_vectorstore
     )
     ad_copy = google_ads.GoogleAd(
         headlines=generated_headlines, descriptions=generated_descriptions
@@ -442,6 +430,116 @@ class AdCopyEvaluatorTest(parameterized.TestCase):
         expected_descriptions_are_memorised, results.descriptions_are_memorised
     )
     self.assertCountEqual(expected_errors, results.errors)
+
+  def test_evaluate_returns_expected_results_with_vectorstore(self):
+    evaluator = ad_copy_evaluator.AdCopyEvaluator(
+        self.ad_format,
+        ad_copy_vectorstore=self.ad_copy_vectorstore,
+    )
+
+    ad_copy = google_ads.GoogleAd(
+        headlines=["headline 1", "headline 2", "headline 3"],
+        descriptions=["description 1", "description 2"],
+    )
+
+    results = evaluator.evaluate(
+        ad_copy,
+        allow_memorised_headlines=False,
+        allow_memorised_descriptions=False,
+        keywords="keyword 1, keyword 2",
+    )
+
+    expected_results = ad_copy_evaluator.EvaluationResults(
+        errors=[],
+        warnings=[],
+        headlines_are_memorised=False,
+        descriptions_are_memorised=False,
+        keyword_similarity=0.5266967237430331,
+        style_similarity=0.5031767909754127,
+    )
+    self.assertEqual(results, expected_results)
+
+  def test_evaluate_returns_expected_results_without_vectorstore(self):
+    evaluator = ad_copy_evaluator.AdCopyEvaluator(
+        self.ad_format,
+    )
+
+    ad_copy = google_ads.GoogleAd(
+        headlines=["headline 1", "headline 2", "headline 3"],
+        descriptions=["description 1", "description 2"],
+    )
+
+    results = evaluator.evaluate(
+        ad_copy,
+        allow_memorised_headlines=False,
+        allow_memorised_descriptions=False,
+        keywords="keyword 1, keyword 2",
+    )
+
+    expected_results = ad_copy_evaluator.EvaluationResults(
+        errors=[],
+        warnings=[],
+        headlines_are_memorised=False,
+        descriptions_are_memorised=False,
+        keyword_similarity=None,
+        style_similarity=None,
+    )
+    self.assertEqual(results, expected_results)
+
+  def test_evaluate_returns_expected_results_with_vectorstore_no_keywords(self):
+    evaluator = ad_copy_evaluator.AdCopyEvaluator(
+        self.ad_format,
+        ad_copy_vectorstore=self.ad_copy_vectorstore,
+    )
+
+    ad_copy = google_ads.GoogleAd(
+        headlines=["headline 1", "headline 2", "headline 3"],
+        descriptions=["description 1", "description 2"],
+    )
+
+    results = evaluator.evaluate(
+        ad_copy,
+        allow_memorised_headlines=False,
+        allow_memorised_descriptions=False,
+    )
+
+    expected_results = ad_copy_evaluator.EvaluationResults(
+        errors=[],
+        warnings=[],
+        headlines_are_memorised=False,
+        descriptions_are_memorised=False,
+        keyword_similarity=None,
+        style_similarity=None,
+    )
+    self.assertEqual(results, expected_results)
+
+  def test_evaluate_returns_expected_results_with_vectorstore_empty_ad(self):
+    evaluator = ad_copy_evaluator.AdCopyEvaluator(
+        self.ad_format,
+        ad_copy_vectorstore=self.ad_copy_vectorstore,
+    )
+
+    ad_copy = google_ads.GoogleAd(headlines=[], descriptions=[])
+
+    results = evaluator.evaluate(
+        ad_copy,
+        allow_memorised_headlines=False,
+        allow_memorised_descriptions=False,
+        keywords="keyword 1, keyword 2",
+    )
+
+    expected_results = ad_copy_evaluator.EvaluationResults(
+        errors=[
+            "Invalid number of headlines for the ad format.",
+            "Invalid number of descriptions for the ad format.",
+        ],
+        warnings=[],
+        headlines_are_memorised=False,
+        descriptions_are_memorised=False,
+        keyword_similarity=None,
+        style_similarity=None,
+    )
+    self.assertEqual(results, expected_results)
 
 
 if __name__ == "__main__":
