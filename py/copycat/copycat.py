@@ -65,6 +65,10 @@ characters.
 COPYCAT_PARAMS_FILE_NAME = "copycat_params.json"
 
 
+class CopycatResponseError(ValueError):
+  """The error raised when the CopycatResponse is not successful."""
+
+
 class CopycatResponse(pydantic.BaseModel):
   """The response from Copycat.
 
@@ -91,6 +95,10 @@ class CopycatResponse(pydantic.BaseModel):
     return "\n".join(
         map(lambda x: f"- {x}", sorted(self.evaluation_results.errors))
     )
+
+  def raise_if_not_success(self) -> None:
+    if not self.success:
+      raise CopycatResponseError(self.error_message)
 
 
 @dataclasses.dataclass

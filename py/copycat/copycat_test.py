@@ -92,6 +92,45 @@ class CopycatResponseTest(parameterized.TestCase):
     )
     self.assertEqual(response.error_message, expected_error_message)
 
+  def test_raise_if_not_success_raises_exception_if_not_success(self):
+    response = copycat.CopycatResponse(
+        google_ad=google_ads.GoogleAd(
+            headlines=["New headline 1", "New headline 2"],
+            descriptions=["New description"],
+        ),
+        keywords=self.keywords,
+        evaluation_results=copycat.EvaluationResults(
+            headlines_are_memorised=False,
+            descriptions_are_memorised=False,
+            style_similarity=None,
+            keyword_similarity=None,
+            errors=["One error message"],
+            warnings=[],
+        ),
+    )
+    with self.assertRaisesWithLiteralMatch(
+        copycat.CopycatResponseError, "- One error message"
+    ):
+      response.raise_if_not_success()
+
+  def test_raise_if_not_success_does_not_raise_if_success(self):
+    response = copycat.CopycatResponse(
+        google_ad=google_ads.GoogleAd(
+            headlines=["New headline 1", "New headline 2"],
+            descriptions=["New description"],
+        ),
+        keywords=self.keywords,
+        evaluation_results=copycat.EvaluationResults(
+            headlines_are_memorised=False,
+            descriptions_are_memorised=False,
+            style_similarity=None,
+            keyword_similarity=None,
+            errors=[],
+            warnings=[],
+        ),
+    )
+    response.raise_if_not_success()
+
 
 class CopycatTest(parameterized.TestCase):
 
