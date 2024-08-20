@@ -176,6 +176,10 @@ class AdCopyEvaluator:
     )
     return complete_headlines and complete_descriptions
 
+  def is_empty(self, ad_copy: GoogleAd) -> bool:
+    """Returns true if the ad copy is empty."""
+    return not ad_copy.headlines and not ad_copy.descriptions
+
   def is_underpopulated(self, ad_copy: GoogleAd) -> bool:
     """Returns true if the ad copy is underpopulated.
 

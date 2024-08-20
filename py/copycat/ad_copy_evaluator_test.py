@@ -312,6 +312,44 @@ class AdCopyEvaluatorTest(parameterized.TestCase):
 
     self.assertEqual(evaluator.is_underpopulated(google_ad), expected_response)
 
+  @parameterized.named_parameters([
+      {
+          "testcase_name": "has headlines and descriptions",
+          "n_headlines": 1,
+          "n_descriptions": 1,
+          "expected_response": False,
+      },
+      {
+          "testcase_name": "no headlines",
+          "n_headlines": 0,
+          "n_descriptions": 1,
+          "expected_response": False,
+      },
+      {
+          "testcase_name": "no descriptions",
+          "n_headlines": 1,
+          "n_descriptions": 0,
+          "expected_response": False,
+      },
+      {
+          "testcase_name": "is empty",
+          "n_headlines": 0,
+          "n_descriptions": 0,
+          "expected_response": True,
+      },
+  ])
+  def test_is_empty_checks_if_zero_headlines_and_descriptions(
+      self, n_headlines, n_descriptions, expected_response
+  ):
+    evaluator = ad_copy_evaluator.AdCopyEvaluator(self.ad_format)
+
+    google_ad = google_ads.GoogleAd(
+        headlines=list(map(str, range(n_headlines))),
+        descriptions=list(map(str, range(n_descriptions))),
+    )
+
+    self.assertEqual(evaluator.is_empty(google_ad), expected_response)
+
   @parameterized.named_parameters(
       dict(
           testcase_name="not memorised",
