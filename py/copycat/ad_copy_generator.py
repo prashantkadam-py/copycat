@@ -73,6 +73,7 @@ class ExemplarSelectionMethod(enum.Enum):
 class TextGenerationRequest(pydantic.BaseModel):
   """The request to generate text."""
 
+  keywords: str
   system_instruction: str
   prompt: list[generative_models.Content]
   chat_model_name: ModelName
@@ -86,6 +87,8 @@ class TextGenerationRequest(pydantic.BaseModel):
 
   def to_markdown(self):
     lines = [
+        "**Keywords:**",
+        self.keywords,
         "**Model Parameters:**",
         f"Model name: {self.chat_model_name.value}",
         f"Temperature: {self.temperature}",

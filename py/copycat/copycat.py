@@ -486,7 +486,8 @@ class Copycat:
 
     requests = [
         TextGenerationRequest(
-            prompt=prompt,
+            keywords=keywords_i,
+            prompt=prompt_i,
             system_instruction=system_instruction,
             chat_model_name=ModelName(model_name),
             temperature=temperature,
@@ -494,10 +495,36 @@ class Copycat:
             top_p=top_p,
             safety_settings=safety_settings,
         )
-        for prompt in prompts
+        for keywords_i, prompt_i in zip(keywords, prompts)
     ]
 
     return requests
+
+  def _generate_new_ad_copy_from_requests(
+      self,
+      requests: list[TextGenerationRequest],
+  ) -> list[CopycatResponse]:
+    """Generates a new ad copy from a list of requests.
+
+    Args:
+      requests: The requests to generate the ad copy from.
+
+    Returns:
+      A list of CopycatResponses.
+    """
+    generations = [
+        response.candidates[0]
+        for response in ad_copy_generator.generate_google_ad_json_batch(
+            requests
+        )
+    ]
+    keywords = [request.keywords for request in requests]
+
+    responses = self.construct_responses(
+        generations,
+        keywords,
+    )
+    return responses
 
   def generate_new_ad_copy(
       self,
@@ -570,17 +597,7 @@ class Copycat:
         system_instruction_kwargs=system_instruction_kwargs,
     )
 
-    generations = [
-        response.candidates[0]
-        for response in ad_copy_generator.generate_google_ad_json_batch(
-            requests
-        )
-    ]
-
-    responses = self.construct_responses(
-        generations,
-        keywords,
-    )
+    responses = self._generate_new_ad_copy_from_requests(requests)
 
     evaluated_responses = self._evaluate_responses(
         responses,

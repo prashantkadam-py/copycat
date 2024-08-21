@@ -47,6 +47,7 @@ class TextGenerationRequestTest(parameterized.TestCase):
 
   def test_to_markdown_returns_expected_markdown(self):
     request = ad_copy_generator.TextGenerationRequest(
+        keywords="keyword 1, keyword 2",
         prompt=[
             generative_models.Content(
                 role="user",
@@ -86,6 +87,10 @@ class TextGenerationRequestTest(parameterized.TestCase):
 
     expected_markdown = textwrap.dedent(
         """\
+      **Keywords:**
+      
+      keyword 1, keyword 2
+      
       **Model Parameters:**
 
       Model name: gemini-1.5-flash-preview-0514
@@ -669,6 +674,7 @@ class AdCopyGeneratorTest(parameterized.TestCase):
       self, input_model_name, parsed_model_name, generative_model_patcher
   ):
     request = ad_copy_generator.TextGenerationRequest(
+        keywords="keyword 1, keyword 2",
         prompt=[
             generative_models.Content(
                 role="user",
@@ -699,6 +705,7 @@ class AdCopyGeneratorTest(parameterized.TestCase):
         )
     }
     request = ad_copy_generator.TextGenerationRequest(
+        keywords="keyword 1, keyword 2",
         prompt=[
             generative_models.Content(
                 role="user",
@@ -728,6 +735,7 @@ class AdCopyGeneratorTest(parameterized.TestCase):
       self, input_model_name, generative_model_patcher
   ):
     request = ad_copy_generator.TextGenerationRequest(
+        keywords="keyword 1, keyword 2",
         prompt=[
             generative_models.Content(
                 role="user",
@@ -762,6 +770,7 @@ class AdCopyGeneratorTest(parameterized.TestCase):
   ):
 
     request = ad_copy_generator.TextGenerationRequest(
+        keywords="keyword 1, keyword 2",
         prompt=[
             generative_models.Content(
                 role="user",
@@ -831,6 +840,7 @@ class AdCopyGeneratorTest(parameterized.TestCase):
         )
     ]
     request = ad_copy_generator.TextGenerationRequest(
+        keywords="keyword 1, keyword 2",
         prompt=prompt,
         system_instruction="Example system instruction",
         chat_model_name=input_model_name,
@@ -855,6 +865,7 @@ class AdCopyGeneratorTest(parameterized.TestCase):
   ):
 
     request = ad_copy_generator.TextGenerationRequest(
+        keywords="keyword 1, keyword 2",
         prompt=[
             generative_models.Content(
                 role="user",
@@ -896,6 +907,7 @@ class AdCopyGeneratorTest(parameterized.TestCase):
     ]
 
     request_1 = ad_copy_generator.TextGenerationRequest(
+        keywords="keyword 1, keyword 2",
         prompt=prompt_1,
         system_instruction="Example system instruction",
         chat_model_name=input_model_name,
@@ -906,6 +918,7 @@ class AdCopyGeneratorTest(parameterized.TestCase):
     )
 
     request_2 = ad_copy_generator.TextGenerationRequest(
+        keywords="keyword 1, keyword 2",
         prompt=prompt_2,
         system_instruction="Example system instruction",
         chat_model_name=input_model_name,

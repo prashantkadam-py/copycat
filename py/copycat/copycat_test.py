@@ -459,6 +459,7 @@ class CopycatTest(parameterized.TestCase):
     )
 
     expected_request = copycat.TextGenerationRequest(
+        keywords=keywords,
         prompt=expected_prompt,
         system_instruction="Example system instruction",
         chat_model_name=copycat.ModelName.GEMINI_1_5_FLASH,
