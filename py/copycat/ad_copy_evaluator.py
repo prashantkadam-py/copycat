@@ -27,6 +27,7 @@ GoogleAdFormat = google_ads.GoogleAdFormat
 
 class EvaluationResults(pydantic.BaseModel):
   """The metrics used to evaluate the generated ad."""
+
   headlines_are_memorised: bool | None
   descriptions_are_memorised: bool | None
   errors: list[str]
@@ -35,8 +36,11 @@ class EvaluationResults(pydantic.BaseModel):
   keyword_similarity: float | None
 
 
-def _normalize_cosine_similarity(similarity: float) -> float:
-  """Converts the cosine similarity to a value between 0 and 1."""
+def _normalized_cosine_similarity(
+    embedding_1: list[float], embedding_2: list[float]
+) -> float:
+  """Calculate the cosine similarity normalized to a value between 0 and 1."""
+  similarity = pairwise.cosine_similarity([embedding_1], [embedding_2])[0][0]
   return min(max((1.0 + similarity) / 2.0, 0.0), 1.0)
 
 
@@ -145,7 +149,7 @@ class AdCopyEvaluator:
     """Returns true if the ad copy is valid.
 
     This checks that the number of headlines and descriptions is within the
-    limits for the ad format, the headlines and descriptions are unique, and 
+    limits for the ad format, the headlines and descriptions are unique, and
     that the length of each headline and description is within the limits.
 
     Args:
@@ -209,13 +213,13 @@ class AdCopyEvaluator:
 
     return not (set(ad_copy.descriptions) - self.training_descriptions)
 
-  def calculate_similarity_metrics(
+  def calculate_similarity_metrics_batch(
       self,
       *,
-      ad_copy: GoogleAd,
-      keywords: str,
-  ) -> dict[str, float]:
-    """Evaluates the generated ad copy against the training data and keywords.
+      ad_copies: list[GoogleAd],
+      keywords: list[str],
+  ) -> list[dict[str, float]]:
+    """Evaluates the generated ad copies against the training data and keywords.
 
     This calculates two metrics:
       - The style similarity, which is how similar the style of the generated ad
@@ -228,64 +232,85 @@ class AdCopyEvaluator:
     normalising it between 0 and 1, so 0 is the least similar and 1 is the most
     similar.
 
-    If the vectorstore is not provided, this will return an empty dict.
-
     Args:
-      ad_copy: The generated ad.
-      keywords: The keywords used to generate the ad.
+      ad_copies: The generated ads.
+      keywords: The keywords used to generate the ads.
 
     Returns:
-      A dict containing the style_similarity and keyword_similarity.
+      A list of dicts containing the style_similarity and keyword_similarity for
+      each ad. The dict will be empty if the vectorstore is not provided or
+      if the ad has no headlines and descriptions.
     """
     if self.ad_copy_vectorstore is None:
-      return dict()
+      return [dict()] * len(ad_copies)
 
-    keywords_embedding = self.ad_copy_vectorstore.embed_queries([keywords])
-    ad_embedding = self.ad_copy_vectorstore.embed_documents([str(ad_copy)])
-
-    keyword_similarity = _normalize_cosine_similarity(
-        pairwise.cosine_similarity(keywords_embedding, ad_embedding)[0][0]
+    keywords_embeddings = self.ad_copy_vectorstore.embed_queries(keywords)
+    ad_embeddings = self.ad_copy_vectorstore.embed_documents(
+        list(map(str, ad_copies))
     )
 
-    most_similar_training_ad = self.ad_copy_vectorstore.get_relevant_ads(
-        [str(ad_copy)], k=1
-    )[0][0]
-    similar_training_ad_embeddings = self.ad_copy_vectorstore.embed_documents(
-        [str(most_similar_training_ad.google_ad)]
+    _, similar_training_ads_embeddings = (
+        self.ad_copy_vectorstore.get_relevant_ads_and_embeddings_from_embeddings(
+            ad_embeddings, k=1
+        )
     )
+    most_similar_training_ads_embeddings = [
+        similar_embeddings[0]
+        for similar_embeddings in similar_training_ads_embeddings
+    ]
 
-    style_similarity = _normalize_cosine_similarity(
-        pairwise.cosine_similarity(
-            similar_training_ad_embeddings, ad_embedding
-        )[0][0]
-    )
+    similarity_metrics = []
+    for (
+        keywords_embedding,
+        ad_embedding,
+        ad_copy,
+        most_similar_training_ad_embeddings,
+    ) in zip(
+        keywords_embeddings,
+        ad_embeddings,
+        ad_copies,
+        most_similar_training_ads_embeddings,
+    ):
+      if self.is_empty(ad_copy):
+        similarity_metrics.append(dict())
+        continue
 
-    return {
-        "style_similarity": style_similarity,
-        "keyword_similarity": keyword_similarity,
-    }
+      keyword_similarity = _normalized_cosine_similarity(
+          keywords_embedding, ad_embedding
+      )
 
-  def evaluate(
+      style_similarity = _normalized_cosine_similarity(
+          most_similar_training_ad_embeddings, ad_embedding
+      )
+
+      similarity_metrics.append({
+          "style_similarity": style_similarity,
+          "keyword_similarity": keyword_similarity,
+      })
+
+    return similarity_metrics
+
+  def _evaluate_simple_metrics(
       self,
       ad_copy: GoogleAd,
       *,
       allow_memorised_headlines: bool = False,
       allow_memorised_descriptions: bool = False,
-      keywords: str | None = None
   ) -> EvaluationResults:
     """Evaluates the generated ad copy.
 
+    This checks that the number of headlines and descriptions is within the
+    limits for the ad format, the headlines and descriptions are unique, and
+    that the length of each headline and description is within the limits.
+
     Args:
-      ad_copy: The generated ad.
+      ad_copy: The ad copy to evaluate.
       allow_memorised_headlines: Whether to allow the headlines to be memorised.
       allow_memorised_descriptions: Whether to allow the descriptions to be
         memorised.
-      keywords: The keywords used to generate the ad. Only required for the
-        style and keyword similarity metrics. If not provided, these metrics
-        will be None.
 
     Returns:
-      The evaluation results.
+      The evaluation results for the ad copy.
     """
     errors = []
     warnings = []
@@ -319,18 +344,63 @@ class AdCopyEvaluator:
       else:
         errors.append("All descriptions are memorised from the training data.")
 
-    if keywords is None or self.is_underpopulated(ad_copy):
-      similarity_metrics = {}
-    else:
-      similarity_metrics = self.calculate_similarity_metrics(
-          ad_copy=ad_copy, keywords=keywords
-      )
-
     return EvaluationResults(
         errors=errors,
         warnings=warnings,
         headlines_are_memorised=headlines_are_memorised,
         descriptions_are_memorised=descriptions_are_memorised,
-        keyword_similarity=similarity_metrics.get("keyword_similarity"),
-        style_similarity=similarity_metrics.get("style_similarity"),
+        style_similarity=None,
+        keyword_similarity=None,
     )
+
+  def evaluate_batch(
+      self,
+      ad_copies: list[GoogleAd],
+      *,
+      allow_memorised_headlines: bool = False,
+      allow_memorised_descriptions: bool = False,
+      keywords: list[str] | None = None,
+  ) -> list[EvaluationResults]:
+    """Evaluates the generated ad copies.
+
+    Args:
+      ad_copies: The generated ads.
+      allow_memorised_headlines: Whether to allow the headlines to be memorised.
+      allow_memorised_descriptions: Whether to allow the descriptions to be
+        memorised.
+      keywords: The list of keywords used to generate the ads. Only required for
+        the style and keyword similarity metrics. If not provided, these metrics
+        will be None.
+
+    Returns:
+      The list of evaluation results for each ad.
+    """
+
+    results = [
+        self._evaluate_simple_metrics(
+            ad_copy=ad_copy,
+            allow_memorised_headlines=allow_memorised_headlines,
+            allow_memorised_descriptions=allow_memorised_descriptions,
+        )
+        for ad_copy in ad_copies
+    ]
+
+    if keywords is None:
+      return results
+
+    similarity_metrics = self.calculate_similarity_metrics_batch(
+        ad_copies=ad_copies, keywords=keywords
+    )
+
+    results = [
+        results_i.model_copy(
+            update=dict(
+                style_similarity=similarity_metrics_i.get("style_similarity"),
+                keyword_similarity=similarity_metrics_i.get(
+                    "keyword_similarity"
+                ),
+            )
+        )
+        for results_i, similarity_metrics_i in zip(results, similarity_metrics)
+    ]
+    return results

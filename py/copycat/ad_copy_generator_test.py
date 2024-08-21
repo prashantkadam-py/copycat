@@ -220,6 +220,61 @@ class AdCopyVectorstoreTest(parameterized.TestCase):
 
     self.assertListEqual(results, expected_results)
 
+  def test_get_relevant_ads_and_embeddings_from_embeddings(self):
+    ad_exemplars = pd.DataFrame.from_records([
+        {
+            "headlines": ["headline 1", "headline 2"],
+            "descriptions": ["description 1", "description 2"],
+            "keywords": "keyword 1, keyword 2",
+            "embeddings": [1.0, 2.0, 3.0],
+        },
+        {
+            "headlines": ["headline 3"],
+            "descriptions": ["description 3"],
+            "keywords": "keyword 3, keyword 4",
+            "embeddings": [4.0, 5.0, 6.0],
+        },
+        {
+            "headlines": ["headline 4", "headline 5"],
+            "descriptions": ["description 2"],
+            "keywords": "keyword 5, keyword 6",
+            "embeddings": [7.0, 8.0, 9.0],
+        },
+    ])
+
+    ad_copy_vectorstore = ad_copy_generator.AdCopyVectorstore(
+        ad_exemplars=ad_exemplars,
+        embedding_model_name="text-embedding-004",
+        dimensionality=3,
+        embeddings_batch_size=10,
+    )
+
+    results = (
+        ad_copy_vectorstore.get_relevant_ads_and_embeddings_from_embeddings(
+            [[2.0, 3.0, 4.0]], k=2
+        )
+    )
+    expected_ads = [[
+        ad_copy_generator.ExampleAd(
+            keywords="keyword 1, keyword 2",
+            google_ad=google_ads.GoogleAd(
+                headlines=["headline 1", "headline 2"],
+                descriptions=["description 1", "description 2"],
+            ),
+        ),
+        ad_copy_generator.ExampleAd(
+            keywords="keyword 3, keyword 4",
+            google_ad=google_ads.GoogleAd(
+                headlines=["headline 3"],
+                descriptions=["description 3"],
+            ),
+        ),
+    ]]
+    expected_embeddings = [[[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]]
+    expected_results = (expected_ads, expected_embeddings)
+
+    self.assertEqual(results, expected_results)
+
   def test_affinity_propagation_is_used_to_select_ads_if_provided(self):
     training_data = pd.DataFrame.from_records([
         {

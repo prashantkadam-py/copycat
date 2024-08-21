@@ -387,17 +387,17 @@ class Copycat:
     Returns:
       The evaluated responses.
     """
+    evaluation_results_list = self.ad_copy_evaluator.evaluate_batch(
+        ad_copies=[response.google_ad for response in responses],
+        allow_memorised_headlines=allow_memorised_headlines,
+        allow_memorised_descriptions=allow_memorised_descriptions,
+        keywords=[response.keywords for response in responses],
+    )
     evaluated_responses = []
-    for response in responses:
+    for response, evaluation_results in zip(responses, evaluation_results_list):
       if self.ad_copy_evaluator.is_empty(response.google_ad):
         evaluated_responses.append(response.model_copy())
       else:
-        evaluation_results = self.ad_copy_evaluator.evaluate(
-            response.google_ad,
-            allow_memorised_headlines=allow_memorised_headlines,
-            allow_memorised_descriptions=allow_memorised_descriptions,
-            keywords=response.keywords,
-        )
         evaluated_responses.append(
             response.model_copy(
                 update=dict(evaluation_results=evaluation_results)

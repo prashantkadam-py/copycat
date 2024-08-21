@@ -464,33 +464,24 @@ class AdCopyVectorstore:
     """The total number of exemplars in the vectorstore."""
     return len(self.ad_exemplars)
 
-  def get_relevant_ads(
-      self, queries: list[str], k: int
-  ) -> list[list[ExampleAd]]:
-    """Returns the k most relevant ads for the provided query.
-
-    The ads are retrieved from the vectorstore using the provided query. The
-    ads are then filtered using maximal marginal relevance (MMR) to return the
-    k most relevant ads.
+  def get_relevant_ads_and_embeddings_from_embeddings(
+      self,
+      query_embeddings: list[list[float]],
+      k: int,
+  ) -> tuple[list[list[ExampleAd]], list[list[float]]]:
+    """Gets the most relevant ads and their embeddings for the query embeddings.
 
     Args:
-      queries: The list of queries to use to retrieve the ads. These are
-        typically the keywords used to generate the ad copy.
+      query_embeddings: The list of query embeddings to use to retrieve the ads.
+        These are typically the embeddings of the keywords used to generate the
+        ad copy.
       k: The number of ads to return for each query.
 
     Returns:
-      The k most relavent ads for each query
+      The k most relevant ads and their embeddings for each query as two lists.
     """
     k = min(self.n_exemplars, k)
 
-    query_embeddings = self._generate_embeddings(
-        queries,
-        embedding_model_name=self.embedding_model_name,
-        dimensionality=self.dimensionality,
-        batch_size=self.embeddings_batch_size,
-        task_type="RETRIEVAL_QUERY",
-        progress_bar=False,
-    )
     similar_ad_ids = self.nearest_neighbors.kneighbors(
         query_embeddings, n_neighbors=k, return_distance=False
     )
@@ -505,7 +496,30 @@ class AdCopyVectorstore:
         )
         for ids in similar_ad_ids
     ]
-    return similar_ads
+    similar_ad_embeddings = [
+        self.ad_exemplars.iloc[ids]["embeddings"].values.tolist()
+        for ids in similar_ad_ids
+    ]
+    return similar_ads, similar_ad_embeddings
+
+  def get_relevant_ads(
+      self, queries: list[str], k: int
+  ) -> list[list[ExampleAd]]:
+    """Returns the k most relevant ads for the provided query.
+
+    Args:
+      queries: The list of queries to use to retrieve the ads. These are
+        typically the keywords used to generate the ad copy.
+      k: The number of ads to return for each query.
+
+    Returns:
+      The k most relavent ads for each query
+    """
+    query_embeddings = self.embed_queries(queries)
+    relevant_ads, _ = self.get_relevant_ads_and_embeddings_from_embeddings(
+        query_embeddings, k
+    )
+    return relevant_ads
 
 
 def _construct_new_ad_copy_user_message(

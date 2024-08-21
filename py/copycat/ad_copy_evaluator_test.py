@@ -73,13 +73,13 @@ class AdCopyEvaluatorTest(parameterized.TestCase):
         headlines=["generated headline"], descriptions=["generated description"]
     )
 
-    actual_metrics = evaluator.calculate_similarity_metrics(
-        ad_copy=generated_ad,
-        keywords="keyword 1, keyword 2",
-    )
+    actual_metrics = evaluator.calculate_similarity_metrics_batch(
+        ad_copies=[generated_ad],
+        keywords=["keyword 1, keyword 2"],
+    )[0]
 
     expected_metrics = dict(
-        style_similarity=0.47552919560639856,
+        style_similarity=0.5296069429044152,
         keyword_similarity=0.46178879468508377,
     )
     self.assertDictEqual(actual_metrics, expected_metrics)
@@ -455,11 +455,11 @@ class AdCopyEvaluatorTest(parameterized.TestCase):
         headlines=generated_headlines, descriptions=generated_descriptions
     )
 
-    results = evaluator.evaluate(
-        ad_copy,
+    results = evaluator.evaluate_batch(
+        [ad_copy],
         allow_memorised_headlines=allow_memorised_headlines,
         allow_memorised_descriptions=allow_memorised_descriptions,
-    )
+    )[0]
 
     self.assertEqual(
         expected_headlines_are_memorised, results.headlines_are_memorised
@@ -480,12 +480,12 @@ class AdCopyEvaluatorTest(parameterized.TestCase):
         descriptions=["description 1", "description 2"],
     )
 
-    results = evaluator.evaluate(
-        ad_copy,
+    results = evaluator.evaluate_batch(
+        [ad_copy],
         allow_memorised_headlines=False,
         allow_memorised_descriptions=False,
-        keywords="keyword 1, keyword 2",
-    )
+        keywords=["keyword 1, keyword 2"],
+    )[0]
 
     expected_results = ad_copy_evaluator.EvaluationResults(
         errors=[],
@@ -493,7 +493,7 @@ class AdCopyEvaluatorTest(parameterized.TestCase):
         headlines_are_memorised=False,
         descriptions_are_memorised=False,
         keyword_similarity=0.5266967237430331,
-        style_similarity=0.5031767909754127,
+        style_similarity=0.5080664254954086,
     )
     self.assertEqual(results, expected_results)
 
@@ -507,12 +507,12 @@ class AdCopyEvaluatorTest(parameterized.TestCase):
         descriptions=["description 1", "description 2"],
     )
 
-    results = evaluator.evaluate(
-        ad_copy,
+    results = evaluator.evaluate_batch(
+        [ad_copy],
         allow_memorised_headlines=False,
         allow_memorised_descriptions=False,
-        keywords="keyword 1, keyword 2",
-    )
+        keywords=["keyword 1, keyword 2"],
+    )[0]
 
     expected_results = ad_copy_evaluator.EvaluationResults(
         errors=[],
@@ -535,11 +535,11 @@ class AdCopyEvaluatorTest(parameterized.TestCase):
         descriptions=["description 1", "description 2"],
     )
 
-    results = evaluator.evaluate(
-        ad_copy,
+    results = evaluator.evaluate_batch(
+        [ad_copy],
         allow_memorised_headlines=False,
         allow_memorised_descriptions=False,
-    )
+    )[0]
 
     expected_results = ad_copy_evaluator.EvaluationResults(
         errors=[],
@@ -559,12 +559,12 @@ class AdCopyEvaluatorTest(parameterized.TestCase):
 
     ad_copy = google_ads.GoogleAd(headlines=[], descriptions=[])
 
-    results = evaluator.evaluate(
-        ad_copy,
+    results = evaluator.evaluate_batch(
+        [ad_copy],
         allow_memorised_headlines=False,
         allow_memorised_descriptions=False,
-        keywords="keyword 1, keyword 2",
-    )
+        keywords=["keyword 1, keyword 2"],
+    )[0]
 
     expected_results = ad_copy_evaluator.EvaluationResults(
         errors=[

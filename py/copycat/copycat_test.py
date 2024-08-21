@@ -508,7 +508,7 @@ class CopycatTest(parameterized.TestCase):
                 warnings=[],
                 headlines_are_memorised=False,
                 descriptions_are_memorised=False,
-                style_similarity=0.5208610332526543,
+                style_similarity=0.5418620460312684,
                 keyword_similarity=0.5209703590026296,
             ),
         ),
