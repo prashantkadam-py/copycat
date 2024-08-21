@@ -306,8 +306,6 @@ class Copycat:
       self,
       raw_generated_ads: list[generative_models.Candidate],
       keywords: list[str],
-      allow_memorised_headlines: bool,
-      allow_memorised_descriptions: bool,
   ) -> list[CopycatResponse]:
     """Constructs a CopycatResponse from a generated GoogleAd.
 
@@ -315,8 +313,6 @@ class Copycat:
       raw_generated_ads: The unprocessed generated ads as a generation
         candidates.
       keywords: The keywords used to generate the ads.
-      allow_memorised_headlines: Whether to allow memorised headlines.
-      allow_memorised_descriptions: Whether to allow memorised descriptions.
 
     Returns:
       A CopycatResponse object.
@@ -363,22 +359,51 @@ class Copycat:
           ad_copy, self.ad_format
       )
 
-      evaluation_results = self.ad_copy_evaluator.evaluate(
-          ad_copy,
-          allow_memorised_headlines=allow_memorised_headlines,
-          allow_memorised_descriptions=allow_memorised_descriptions,
-          keywords=keywords_i,
-      )
-
       responses.append(
           CopycatResponse(
               google_ad=ad_copy,
               keywords=keywords_i,
-              evaluation_results=evaluation_results,
+              evaluation_results=empty_evaluation_results,
           )
       )
 
     return responses
+
+  def _evaluate_responses(
+      self,
+      responses: list[CopycatResponse],
+      allow_memorised_headlines: bool,
+      allow_memorised_descriptions: bool,
+  ) -> list[CopycatResponse]:
+    """Evaluates the responses if the ad copy is not empty.
+
+    If the ad copy is empty, then it is not evaluated.
+
+    Args:
+      responses: The responses to evaluate.
+      allow_memorised_headlines: Whether to allow memorised headlines.
+      allow_memorised_descriptions: Whether to allow memorised descriptions.
+
+    Returns:
+      The evaluated responses.
+    """
+    evaluated_responses = []
+    for response in responses:
+      if self.ad_copy_evaluator.is_empty(response.google_ad):
+        evaluated_responses.append(response.model_copy())
+      else:
+        evaluation_results = self.ad_copy_evaluator.evaluate(
+            response.google_ad,
+            allow_memorised_headlines=allow_memorised_headlines,
+            allow_memorised_descriptions=allow_memorised_descriptions,
+            keywords=response.keywords,
+        )
+        evaluated_responses.append(
+            response.model_copy(
+                update=dict(evaluation_results=evaluation_results)
+            )
+        )
+    return evaluated_responses
 
   def construct_text_generation_requests_for_new_ad_copy(
       self,
@@ -555,13 +580,17 @@ class Copycat:
     responses = self.construct_responses(
         generations,
         keywords,
+    )
+
+    evaluated_responses = self._evaluate_responses(
+        responses,
         allow_memorised_headlines=allow_memorised_headlines,
         allow_memorised_descriptions=allow_memorised_descriptions,
     )
 
-    if len(responses) != len(keywords):
+    if len(evaluated_responses) != len(keywords):
       raise RuntimeError(
           "The number of responses does not match the number of keywords."
       )
 
-    return responses
+    return evaluated_responses
