@@ -18,13 +18,16 @@ import dataclasses
 import enum
 import functools
 import json
-from typing import Any, AsyncIterable, Coroutine, Hashable, TypeVar
+import re
+from typing import Any, AsyncIterable, Coroutine, Hashable, TypeVar, Union
 
+import bs4
 from vertexai import generative_models
 from vertexai import language_models
 import numpy as np
 import pandas as pd
 import pydantic
+import requests
 from sklearn import cluster
 from sklearn import neighbors
 import tqdm.autonotebook as tqdm
@@ -765,3 +768,70 @@ def generate_google_ad_json_batch(
       )
 
   return outputs
+
+
+def extract_urls_for_keyword_instructions(
+    keyword_instructions: list[str],
+) -> list[str]:
+  """Extracts pages from keyword instructions.
+
+  Args:
+      keyword_instructions: keyword instructions or a string that may contain a
+        URL.
+
+  Returns:
+      list of keyword instructions with retrieved web page content if a URL is
+      found and successfully fetched.
+  """
+  pages = []
+  for instruction in keyword_instructions:
+    url = extract_url_from_string(instruction)
+    if url and is_valid_url(url):
+      try:
+        response = requests.get(url)
+        response.raise_for_status()
+        soup = bs4.BeautifulSoup(response.content, "html.parser")
+        if len(instruction) == len(url):  # if the instruction is only the url
+          pages.append(f"Web page content of {url}: {soup.get_text()}")
+        else:
+          pages.append(f"{instruction} ## Content of {url}: {soup.get_text()}")
+      except requests.exceptions.RequestException as e:
+        pages.append(
+            instruction
+        )  # Keep the original instruction if there's an error
+    else:
+      pages.append(instruction)
+  return pages
+
+
+def extract_url_from_string(text: str) -> str | None:
+  """Extracts a URL from a string.
+
+  Args:
+      text: The string that may contain a URL.
+
+  Returns:
+      The extracted URL if found, otherwise None.
+  """
+  url_pattern = re.compile(
+      r"http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+"
+  )
+  match = url_pattern.search(text)
+  return match.group() if match else None
+
+
+def is_valid_url(url: str) -> bool:
+  """Checks if a url is valid.
+
+  Args:
+      url: to check if valid url.
+
+  Returns:
+      Boolean dependent on if it is a valid url
+  """
+  regex = re.compile(
+      r"^(https?):\/\/" r"([a-zA-Z0-9.-]+)\." r"([a-zA-Z]{2,})" r"(\/[^\s]*)?$",
+      re.IGNORECASE,
+  )
+
+  return re.fullmatch(regex, url) is not None

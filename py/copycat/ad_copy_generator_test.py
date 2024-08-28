@@ -19,6 +19,7 @@ from absl.testing import parameterized
 from vertexai import generative_models
 import mock
 import pandas as pd
+import requests
 
 from copycat import ad_copy_generator
 from copycat import google_ads
@@ -988,6 +989,109 @@ class AdCopyGeneratorTest(parameterized.TestCase):
     )
 
     self.assertLen(response, 2)
+
+  def test_extract_url_with_http(self):
+    text = "Check out this website: http://www.example.com for more info."
+    expected_url = "http://www.example.com"
+    self.assertEqual(
+        ad_copy_generator.extract_url_from_string(text), expected_url
+    )
+
+  def test_extract_url_with_https(self):
+    text = "Secure site: https://www.google.com"
+    expected_url = "https://www.google.com"
+    self.assertEqual(
+        ad_copy_generator.extract_url_from_string(text), expected_url
+    )
+
+  def test_extract_url_with_complex_path(self):
+    text = "API endpoint: https://api.example.com/v1/users/1234?key=abc"
+    expected_url = "https://api.example.com/v1/users/1234?key=abc"
+    self.assertEqual(
+        ad_copy_generator.extract_url_from_string(text), expected_url
+    )
+
+  def test_no_url_present(self):
+    text = "No URL in this text."
+    self.assertFalse(
+        ad_copy_generator.extract_url_from_string(text)
+    )  # Check for False
+
+  def test_multiple_urls(self):
+    # This function is designed to extract the first URL it finds
+    text = "Visit http://www.example.com or https://www.google.com"
+    expected_url = "http://www.example.com"
+    self.assertEqual(
+        ad_copy_generator.extract_url_from_string(text), expected_url
+    )
+
+  def test_valid_urls(self):
+    valid_urls = [
+        "http://www.example.com",
+        "https://www.google.com",
+        "https://subdomain.example.co.uk/some/path",
+        "https://google.com/path/with-hyphens",
+    ]
+    for url in valid_urls:
+      self.assertTrue(ad_copy_generator.is_valid_url(url))
+
+  def test_invalid_urls(self):
+    invalid_urls = [
+        "www.example.com",  # Missing protocol
+        "htt://www.example.com",  # Invalid protocol
+        "https://.com",  # Missing domain name
+        "https://example",  # Missing TLD
+        "ftp://example.com",  # Unsupported protocol
+        "https://example.com/ path/with/spaces",  # Spaces in the path
+    ]
+    for url in invalid_urls:
+      self.assertFalse(ad_copy_generator.is_valid_url(url))
+
+  @mock.patch("bs4.BeautifulSoup")
+  @mock.patch("requests.get")
+  def test_extract_urls_for_keyword_instructions(
+      self,
+      mock_requests_get,
+      mock_beautiful_soup,
+  ):
+
+    mock_requests_get.return_value.raise_for_status.return_value = None
+    mock_requests_get.return_value.content = (
+        "<html><body><h1>Test Page</h1></body></html>"
+    )
+    mock_beautiful_soup.return_value.get_text.return_value = "Test Page"
+
+    mock_requests_get.side_effect = [
+        mock.DEFAULT,
+        mock.DEFAULT,
+        requests.exceptions.RequestException(
+            "Simulated Error"
+        ),
+    ]
+
+    keyword_instructions = [
+        "This is some text without a URL.",
+        "Visit https://www.example.com for more details.",
+        "https://www.google.com",
+        "invalid_url",
+        "https://www.error.com",
+    ]
+    expected_output = [
+        "This is some text without a URL.",
+        (
+            "Visit https://www.example.com for more details. ## Content of"
+            " https://www.example.com: Test Page"
+        ),
+        "Web page content of https://www.google.com: Test Page",
+        "invalid_url",
+        "https://www.error.com",
+    ]
+
+    result = ad_copy_generator.extract_urls_for_keyword_instructions(
+        keyword_instructions
+    )
+    self.assertEqual(len(result), len(expected_output))
+    self.assertEqual(result, expected_output)
 
 
 if __name__ == "__main__":
