@@ -361,7 +361,7 @@ class CopycatTest(parameterized.TestCase):
                   role="user",
                   parts=[
                       generative_models.Part.from_text(
-                          "Keywords: keyword 13a, keyword 13b"
+                          "Keywords: keyword 20a, keyword 20b"
                       )
                   ],
               ),
@@ -369,8 +369,8 @@ class CopycatTest(parameterized.TestCase):
                   role="model",
                   parts=[
                       generative_models.Part.from_text(
-                          '{"headlines":["train headline 13","train headline 13'
-                          ' (2)"],"descriptions":["train description 13"]}'
+                          '{"headlines":["train headline 20","train headline 20'
+                          ' (2)"],"descriptions":["train description 20"]}'
                       )
                   ],
               ),
@@ -410,7 +410,7 @@ class CopycatTest(parameterized.TestCase):
                   role="user",
                   parts=[
                       generative_models.Part.from_text(
-                          "Keywords: keyword 13a, keyword 13b"
+                          "Keywords: keyword 20a, keyword 20b"
                       )
                   ],
               ),
@@ -418,8 +418,8 @@ class CopycatTest(parameterized.TestCase):
                   role="model",
                   parts=[
                       generative_models.Part.from_text(
-                          '{"headlines":["train headline 13","train headline 13'
-                          ' (2)"],"descriptions":["train description 13"]}'
+                          '{"headlines":["train headline 20","train headline 20'
+                          ' (2)"],"descriptions":["train description 20"]}'
                       )
                   ],
               ),
@@ -508,8 +508,8 @@ class CopycatTest(parameterized.TestCase):
                 warnings=[],
                 headlines_are_memorised=False,
                 descriptions_are_memorised=False,
-                style_similarity=0.5418620460312684,
-                keyword_similarity=0.5209703590026296,
+                style_similarity=0.5338446522650305,
+                keyword_similarity=0.47668610866645195,
             ),
         ),
     )

@@ -38,6 +38,30 @@ class PatchEmbeddingsModelTest(parameterized.TestCase):
         ),
     ]
 
+  def test_random_embeddings_returns_expected_embeddings(self):
+    # If this test fails then something has changed with the random number
+    # generation used by the mock embedding model. This shouldn't happen,
+    # but if it does just fix all tests, because it's nothing to do with
+    # copycat.
+    embeddings = testing_utils.random_embeddings(
+        [
+            language_models.TextEmbeddingInput(
+                text="Test 1", task_type="RETRIEVAL_DOCUMENT"
+            )
+        ],
+        output_dimensionality=5,
+    )[0].values
+    self.assertListEqual(
+        embeddings,
+        [
+            0.2501313331234188,
+            -0.4632126439646736,
+            1.0048817101237066,
+            0.53742307130886,
+            -0.23405590135295984,
+        ],
+    )
+
   @testing_utils.PatchEmbeddingsModel()
   def test_get_embeddings_returns_list_of_embeddings(
       self, embeddings_model_patcher

@@ -79,8 +79,8 @@ class AdCopyEvaluatorTest(parameterized.TestCase):
     )[0]
 
     expected_metrics = dict(
-        style_similarity=0.5296069429044152,
-        keyword_similarity=0.46178879468508377,
+        style_similarity=0.5366996856066526,
+        keyword_similarity=0.48784862680427793,
     )
     self.assertDictEqual(actual_metrics, expected_metrics)
 
@@ -492,8 +492,8 @@ class AdCopyEvaluatorTest(parameterized.TestCase):
         warnings=[],
         headlines_are_memorised=False,
         descriptions_are_memorised=False,
-        keyword_similarity=0.5266967237430331,
-        style_similarity=0.5080664254954086,
+        keyword_similarity=0.5023139051908866,
+        style_similarity=0.5617324461155475,
     )
     self.assertEqual(results, expected_results)
 

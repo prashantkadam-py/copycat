@@ -42,7 +42,9 @@ def _random_embedding(
       (text.text + text.task_type).encode("utf-8"), byteorder="big"
   )
   embeddings = (
-      np.random.default_rng(seed).normal(size=output_dimensionality).tolist()
+      np.random.Generator(np.random.MT19937(seed))
+      .normal(size=output_dimensionality)
+      .tolist()
   )
   return language_models.TextEmbedding(
       values=embeddings,
