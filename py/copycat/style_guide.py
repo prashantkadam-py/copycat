@@ -26,7 +26,8 @@ from copycat import ad_copy_generator
 
 ModelName = ad_copy_generator.ModelName
 
-DEFAULT_STYLE_PROMPT = """
+
+STYLE_PROMPT_IF_AD_REPORT_FROM_GCS = """\
 In these files is an ad report for {brand_name}, containing their ads (headlines and descriptions)
 that they use on Google Search Ads for the corresponding keywords. Headlines and descriptions are lists, and
 Google constructs ads by combining those headlines and descriptions together into ads. Therefore the headlines and descriptions
@@ -34,14 +35,46 @@ should be sufficiently varied that Google is able to try lots of different combi
 
 Use the ad report to write a comprehensive style guide for this brand's ad copies that can serve as
 instruction for a copywriter to write new ad copies for {brand_name} for new lists of keywords.
-
-Additionally, there could be other files included regarding the brand's style that you should consider in the style guide.
-
-additonal style intructions: {additional_style_instructions}
-
 Ensure that you capure strong phrases, slogans and brand names of {brand_name} in the guide.
-\n\n
-""".replace("\n", " ")
+
+Additionally, there could be other files included regarding the brand's style that you should consider in the style guide.{additional_style_instructions}"""
+
+STYLE_PROMPT_IF_AD_REPORT_FROM_VECTORSTORE = """\
+Below is an ad report for {brand_name}, containing their ads (headlines and descriptions)
+that they use on Google Search Ads for the corresponding keywords. Headlines and descriptions are lists, and
+Google constructs ads by combining those headlines and descriptions together into ads. Therefore the headlines and descriptions
+should be sufficiently varied that Google is able to try lots of different combinations in order to find what works best.
+
+Use the ad report to write a comprehensive style guide for this brand's ad copies that can serve as
+instruction for a copywriter to write new ad copies for {brand_name} for new lists of keywords.
+Ensure that you capure strong phrases, slogans and brand names of {brand_name} in the guide.
+
+Additionally, there could be other files included regarding the brand's style that you should consider in the style guide.{additional_style_instructions}
+
+Ad Report:
+
+{example_ads_json}"""
+
+
+def _clean_text_newlines(text: str) -> str:
+  """Cleans text newlines.
+
+  If there is a single newline, it is removed. If there is a double newline, it
+  is not removed.
+
+  Args:
+    text: The text to clean.
+
+  Returns:
+    The cleaned text.
+  """
+  return (
+      text.replace("\n\n", "<DOUBLE_NEWLINE>")
+      .replace("\n", " ")
+      .replace("<DOUBLE_NEWLINE>", "\n\n")
+      .replace("  ", " ")
+  )
+
 
 # file types that are accepted for style guide generation with Gemini
 ACCEPTED_FILE_TYPES = ["application/pdf", "text/csv"]
@@ -98,6 +131,7 @@ class StyleGuideGenerator:
   def generate_style_guide(
       self,
       brand_name: str = "",
+      ad_copy_vectorstore: ad_copy_generator.AdCopyVectorstore | None = None,
       additional_style_instructions: str = "",
       model_name: str | ModelName = ModelName.GEMINI_1_5_PRO,
       safety_settings: SafetySettingsType | None = None,
@@ -109,6 +143,9 @@ class StyleGuideGenerator:
 
     Args:
         brand_name: The name of the brand.
+        ad_copy_vectorstore: A vectorstore containing the ad copies to use for
+          style guide generation. If None then the style guide will be generated
+          using only the content in the files loaded from Google Cloud Storage.
         additional_style_instructions: additional style instructions.
         model_name: The name of the generative model to use.
         safety_settings: The safety settings to use for the model.
@@ -128,11 +165,19 @@ class StyleGuideGenerator:
         top_k=top_k,
         top_p=top_p,
     )
+
+    if additional_style_instructions:
+      additional_style_instructions = (
+          "\n\nAlso incorporate the following style instructions into the"
+          f" style guide:\n\n{additional_style_instructions}"
+      )
+
     content = self._construct_style_prompt(
         style_prompt_params={
             "brand_name": brand_name,
             "additional_style_instructions": additional_style_instructions,
-        }
+        },
+        ad_copy_vectorstore=ad_copy_vectorstore,
     )
     model = generative_models.GenerativeModel(
         model_name=model_name.value, safety_settings=safety_settings
@@ -142,27 +187,42 @@ class StyleGuideGenerator:
     )
     if not isinstance(response, generative_models.GenerationResponse):
       raise RuntimeError(
-          "Response is not a GenerationResponse. Instead got:"
-          f" {response}"
+          f"Response is not a GenerationResponse. Instead got: {response}"
       )
     return response
 
   def _construct_style_prompt(
       self,
-      style_prompt: str = DEFAULT_STYLE_PROMPT,
       style_prompt_params: dict[str, str] | None = None,
+      ad_copy_vectorstore: ad_copy_generator.AdCopyVectorstore | None = None,
   ) -> generative_models.Content:
     """Constructs the prompt for style guide generation.
 
     Args:
-        style_prompt: The default style prompt.
         style_prompt_params: The parameters to use for the style prompt.
+        ad_copy_vectorstore: The ad copy vectorstore to use for the style
+          prompt.
 
     Returns:
         The constructed prompt in Content format.
     """
     style_prompt_params = style_prompt_params or {}
-    full_style_prompt = style_prompt.format(**style_prompt_params)
+
+    if ad_copy_vectorstore is not None:
+      style_prompt_params["example_ads_json"] = (
+          ad_copy_vectorstore.ad_exemplars[
+              ["keywords", "headlines", "descriptions"]
+          ].to_json(orient="records", indent=1, force_ascii=False, lines=True)
+      )
+
+    if ad_copy_vectorstore is not None:
+      style_prompt = STYLE_PROMPT_IF_AD_REPORT_FROM_VECTORSTORE
+    else:
+      style_prompt = STYLE_PROMPT_IF_AD_REPORT_FROM_GCS
+
+    full_style_prompt = _clean_text_newlines(
+        style_prompt.format(**style_prompt_params)
+    )
 
     contents: list[generative_models.Part] = [
         generative_models.Part.from_uri(

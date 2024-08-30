@@ -12,17 +12,21 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import textwrap
 from unittest.mock import MagicMock, patch
 
 from absl.testing import absltest
+from absl.testing import parameterized
 from google.cloud import storage
 from vertexai import generative_models
+import pandas as pd
 
+from copycat import ad_copy_generator
 from copycat import style_guide
 from copycat import testing_utils
 
 
-class TestStyleGuideGenerator(absltest.TestCase):
+class TestStyleGuideGenerator(parameterized.TestCase):
 
   def setUp(self):
     super().setUp()
@@ -32,6 +36,12 @@ class TestStyleGuideGenerator(absltest.TestCase):
             {"content": {"parts": [{"text": "This is a test style guide"}]}}
         ]
     })
+    self.embedding_model_patcher = testing_utils.PatchEmbeddingsModel()
+    self.embedding_model_patcher.start()
+
+  def tearDown(self):
+    super().tearDown()
+    self.embedding_model_patcher.stop()
 
   def test_get_all_files(self):
     mock_storage_client = MagicMock(spec=storage.Client)
@@ -76,13 +86,143 @@ class TestStyleGuideGenerator(absltest.TestCase):
       )
 
       # Assertions
-      self.assertEqual(len(response.candidates), 1)  # Check for one candidate
+      self.assertLen(response.candidates, 1)  # Check for one candidate
       self.assertEqual(
           response.candidates[0].content.text,
           self.test_response.candidates[0].content.text,
       )  # Compare with the test response
 
       model_patcher.mock_generative_model.generate_content.assert_called_once()
+
+  @parameterized.named_parameters([
+      dict(
+          testcase_name="No vectorstore, with additional instructions",
+          with_ad_copy_vectorstore=False,
+          additional_style_instructions="Write in a fun and friendly tone.",
+          expected_text_prompt=textwrap.dedent("""\
+            In these files is an ad report for Test Brand, containing their ads (headlines and descriptions) that they use on Google Search Ads for the corresponding keywords. Headlines and descriptions are lists, and Google constructs ads by combining those headlines and descriptions together into ads. Therefore the headlines and descriptions should be sufficiently varied that Google is able to try lots of different combinations in order to find what works best.
+
+            Use the ad report to write a comprehensive style guide for this brand's ad copies that can serve as instruction for a copywriter to write new ad copies for Test Brand for new lists of keywords. Ensure that you capure strong phrases, slogans and brand names of Test Brand in the guide.
+
+            Additionally, there could be other files included regarding the brand's style that you should consider in the style guide.
+
+            Also incorporate the following style instructions into the style guide:
+
+            Write in a fun and friendly tone."""),
+      ),
+      dict(
+          testcase_name="With vectorstore, with additional instructions",
+          with_ad_copy_vectorstore=True,
+          additional_style_instructions="Write in a fun and friendly tone.",
+          expected_text_prompt=textwrap.dedent("""\
+            Below is an ad report for Test Brand, containing their ads (headlines and descriptions) that they use on Google Search Ads for the corresponding keywords. Headlines and descriptions are lists, and Google constructs ads by combining those headlines and descriptions together into ads. Therefore the headlines and descriptions should be sufficiently varied that Google is able to try lots of different combinations in order to find what works best.
+
+            Use the ad report to write a comprehensive style guide for this brand's ad copies that can serve as instruction for a copywriter to write new ad copies for Test Brand for new lists of keywords. Ensure that you capure strong phrases, slogans and brand names of Test Brand in the guide.
+
+            Additionally, there could be other files included regarding the brand's style that you should consider in the style guide.
+
+            Also incorporate the following style instructions into the style guide:
+
+            Write in a fun and friendly tone.
+
+            Ad Report:
+
+             {  "keywords":"keyword 1, keyword 2",  "headlines":[  "headline 1",  "headline 2"  ],  "descriptions":[  "description 1",  "description 2"  ] }
+
+             {  "keywords":"keyword 3, keyword 4",  "headlines":[  "headline 3",  "headline 4"  ],  "descriptions":[  "description 3",  "description 4"  ] }
+            
+            """),
+      ),
+      dict(
+          testcase_name="No vectorstore, no additional instructions",
+          with_ad_copy_vectorstore=False,
+          additional_style_instructions="",
+          expected_text_prompt=textwrap.dedent(
+              """\
+              In these files is an ad report for Test Brand, containing their ads (headlines and descriptions) that they use on Google Search Ads for the corresponding keywords. Headlines and descriptions are lists, and Google constructs ads by combining those headlines and descriptions together into ads. Therefore the headlines and descriptions should be sufficiently varied that Google is able to try lots of different combinations in order to find what works best.
+
+              Use the ad report to write a comprehensive style guide for this brand's ad copies that can serve as instruction for a copywriter to write new ad copies for Test Brand for new lists of keywords. Ensure that you capure strong phrases, slogans and brand names of Test Brand in the guide.
+
+              Additionally, there could be other files included regarding the brand's style that you should consider in the style guide."""
+          ),
+      ),
+      dict(
+          testcase_name="With vectorstore, no additional instructions",
+          with_ad_copy_vectorstore=True,
+          additional_style_instructions="",
+          expected_text_prompt=textwrap.dedent("""\
+            Below is an ad report for Test Brand, containing their ads (headlines and descriptions) that they use on Google Search Ads for the corresponding keywords. Headlines and descriptions are lists, and Google constructs ads by combining those headlines and descriptions together into ads. Therefore the headlines and descriptions should be sufficiently varied that Google is able to try lots of different combinations in order to find what works best.
+
+            Use the ad report to write a comprehensive style guide for this brand's ad copies that can serve as instruction for a copywriter to write new ad copies for Test Brand for new lists of keywords. Ensure that you capure strong phrases, slogans and brand names of Test Brand in the guide.
+
+            Additionally, there could be other files included regarding the brand's style that you should consider in the style guide.
+
+            Ad Report:
+
+             {  "keywords":"keyword 1, keyword 2",  "headlines":[  "headline 1",  "headline 2"  ],  "descriptions":[  "description 1",  "description 2"  ] }
+
+             {  "keywords":"keyword 3, keyword 4",  "headlines":[  "headline 3",  "headline 4"  ],  "descriptions":[  "description 3",  "description 4"  ] }
+            
+            """),
+      ),
+  ])
+  def test_generate_style_guide_uses_expected_text_prompt(
+      self,
+      with_ad_copy_vectorstore,
+      additional_style_instructions,
+      expected_text_prompt,
+  ):
+    if with_ad_copy_vectorstore:
+      training_data = pd.DataFrame.from_records([
+          {
+              "headlines": ["headline 1", "headline 2"],
+              "descriptions": ["description 1", "description 2"],
+              "keywords": "keyword 1, keyword 2",
+          },
+          {
+              "headlines": ["headline 3", "headline 4"],
+              "descriptions": ["description 3", "description 4"],
+              "keywords": "keyword 3, keyword 4",
+          },
+      ])
+
+      ad_copy_vectorstore = (
+          ad_copy_generator.AdCopyVectorstore.create_from_pandas(
+              training_data=training_data,
+              embedding_model_name="text-embedding-004",
+              dimensionality=256,
+              max_initial_ads=100,
+              max_exemplar_ads=10,
+              affinity_preference=None,
+              embeddings_batch_size=10,
+              exemplar_selection_method="random",
+          )
+      )
+    else:
+      ad_copy_vectorstore = None
+
+    with testing_utils.PatchGenerativeModel(
+        response=self.test_response
+    ) as model_patcher:
+      generator = style_guide.StyleGuideGenerator()
+
+      generator.generate_style_guide(
+          brand_name="Test Brand",
+          additional_style_instructions=additional_style_instructions,
+          model_name="gemini-1.5-pro-preview-0514",
+          temperature=0.8,
+          ad_copy_vectorstore=ad_copy_vectorstore,
+      )
+
+      text_prompt = (
+          model_patcher.mock_generative_model.generate_content.call_args.kwargs[
+              "contents"
+          ][0]
+          .parts[-1]
+          .text
+      )
+      self.assertEqual(text_prompt, expected_text_prompt)
+
 
 if __name__ == "__main__":
   absltest.main()
