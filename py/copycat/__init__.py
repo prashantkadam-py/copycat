@@ -18,6 +18,7 @@ from copycat import copycat
 
 Copycat = copycat.Copycat
 CopycatResponse = copycat.CopycatResponse
+StyleGuideGenerator = copycat.StyleGuideGenerator
 
 GoogleAd = copycat.GoogleAd
 GoogleAdFormat = copycat.GoogleAdFormat
