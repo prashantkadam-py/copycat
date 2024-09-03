@@ -79,27 +79,21 @@ class GoogleAdTest(parameterized.TestCase):
               "A few different DKIs: {KeyWord:all first letters capital}"
               " {Keyword:first letter first word capital} {keyword:all"
               " lowercase} {KEYWord:first word all caps} {KeyWORD:last word all"
-              " caps}"
+              " caps} {CUSTOMIZER.something:my customizer}"
           ),
           (
               "A few different DKIs: All First Letters Capital First letter"
               " first word capital all lowercase FIRST Word All Caps Last Word"
-              " All CAPS"
+              " All CAPS my customizer"
           ),
       ),
       (
-          (
-              "Non DKI brackets are unchanged {not a keyword} {something:also"
-              " not a keyword}"
-          ),
-          (
-              "Non DKI brackets are unchanged {not a keyword} {something:also"
-              " not a keyword}"
-          ),
+          "Non DKI brackets are unchanged {not a keyword}",
+          "Non DKI brackets are unchanged {not a keyword}",
       ),
   ])
-  def test_parse_default_dynamic_keyword_insertion(self, text, expected):
-    got = google_ads.parse_default_dynamic_keyword_insertion(text=text)
+  def test_parse_google_ads_special_variables(self, text, expected):
+    got = google_ads.parse_google_ads_special_variables(text=text)
     self.assertEqual(expected, got)
 
 

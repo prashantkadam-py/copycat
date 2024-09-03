@@ -19,15 +19,19 @@ import pydantic
 
 
 # See https://support.google.com/google-ads/answer/6371157
-def parse_default_dynamic_keyword_insertion(text: str) -> str:
-  """Replaces dynamic keyword insertion with the default keyword.
+def parse_google_ads_special_variables(text: str) -> str:
+  """Replaces any special variables used by Google Ads with the default string.
 
-  How the text is inserted depends on the capitalization:
+  First replaces dynamic keyword insertion with the default keyword. How the
+  text is inserted depends on the capitalization:
     "Buy {KeyWord:my keyword} now" -> "Buy My Keyword now"
     "Buy {Keyword:my keyword} now" -> "Buy My keyword now"
     "Buy {keyword:my keyword} now" -> "Buy my keyword now"
     "Buy {KEYWord:my keyword} now" -> "Buy MY Keyword now"
     "Buy {KeyWORD:my keyword} now" -> "Buy My KEYWORD now"
+
+  Then replaces any other customizers with the default value:
+    "Buy {CUSTOMIZER.product:my product} now" -> "Buy my product now"
 
   Args:
     text: The text to parse.
@@ -66,6 +70,10 @@ def parse_default_dynamic_keyword_insertion(text: str) -> str:
       + m.group(1).split()[-1].upper(),
       text,
   )
+
+  # Customizers
+  pattern = r"\{CUSTOMIZER\.([a-zA-Z0-9_]+):([^}]+)\}"
+  text = re.sub(pattern, lambda m: m.group(2), text)
 
   return text
 

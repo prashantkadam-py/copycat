@@ -648,13 +648,13 @@ def remove_invalid_headlines_and_descriptions(
   google_ad.headlines = [
       headline
       for headline in google_ad.headlines
-      if len(google_ads.parse_default_dynamic_keyword_insertion(headline))
+      if len(google_ads.parse_google_ads_special_variables(headline))
       <= google_ad_format.max_headline_length
   ]
   google_ad.descriptions = [
       description
       for description in google_ad.descriptions
-      if len(google_ads.parse_default_dynamic_keyword_insertion(description))
+      if len(google_ads.parse_google_ads_special_variables(description))
       <= google_ad_format.max_description_length
   ]
 

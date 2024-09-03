@@ -109,7 +109,7 @@ class AdCopyEvaluator:
       ad_copy: The ad copy to evaluate.
     """
     return all(
-        len(google_ads.parse_default_dynamic_keyword_insertion(headline))
+        len(google_ads.parse_google_ads_special_variables(headline))
         <= self.ad_format.max_headline_length
         for headline in ad_copy.headlines
     )
@@ -124,7 +124,7 @@ class AdCopyEvaluator:
       ad_copy: The ad copy to evaluate.
     """
     return all(
-        len(google_ads.parse_default_dynamic_keyword_insertion(description))
+        len(google_ads.parse_google_ads_special_variables(description))
         <= self.ad_format.max_description_length
         for description in ad_copy.descriptions
     )
