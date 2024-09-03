@@ -561,10 +561,10 @@ def construct_system_instruction(
   Returns:
   The formatted system prompt.
   """
-  if style_guide:
-    system_instruction += "\n\n" + style_guide
   if system_instruction_kwargs:
     system_instruction = system_instruction.format(**system_instruction_kwargs)
+  if style_guide:
+    system_instruction += "\n\n" + style_guide
   return system_instruction
 
 
