@@ -841,7 +841,7 @@ class CopycatTest(parameterized.TestCase):
       )
       self.assertEqual(response, expected_response)
 
-  def test_write_and_load_loads_the_same_copycat_instance(self):
+  def test_to_dict_and_from_dict_returns_same_copycat_instance(self):
 
     copycat_instance = copycat.Copycat.create_from_pandas(
         training_data=self.training_data(3),
@@ -849,13 +849,51 @@ class CopycatTest(parameterized.TestCase):
         ad_format="text_ad",
         vectorstore_exemplar_selection_method="random",
     )
-    copycat_instance.write(self.tmp_dir.full_path)
 
-    loaded_copycat_instance = copycat.Copycat.load(self.tmp_dir.full_path)
+    reloaded_copycat_instance = copycat.Copycat.from_dict(
+        copycat_instance.to_dict()
+    )
 
     self.assertTrue(
         testing_utils.copycat_instances_are_equal(
-            copycat_instance, loaded_copycat_instance
+            copycat_instance, reloaded_copycat_instance
+        )
+    )
+
+  @parameterized.parameters([
+      "ad_copy_vectorstore",
+      "ad_format",
+  ])
+  def test_from_dict_raises_key_error_if_required_key_is_missing(
+      self, required_key
+  ):
+    with self.assertRaises(KeyError):
+      copycat_instance = copycat.Copycat.create_from_pandas(
+          training_data=self.training_data(3),
+          embedding_model_name="text-embedding-004",
+          ad_format="text_ad",
+          vectorstore_exemplar_selection_method="random",
+      )
+      copycat_instance_dict = copycat_instance.to_dict()
+      del copycat_instance_dict[required_key]
+      copycat.Copycat.from_dict(copycat_instance_dict)
+
+  def test_to_json_and_from_json_returns_same_copycat_instance(self):
+
+    copycat_instance = copycat.Copycat.create_from_pandas(
+        training_data=self.training_data(3),
+        embedding_model_name="text-embedding-004",
+        ad_format="text_ad",
+        vectorstore_exemplar_selection_method="random",
+    )
+
+    reloaded_copycat_instance = copycat.Copycat.from_json(
+        copycat_instance.to_json()
+    )
+
+    self.assertTrue(
+        testing_utils.copycat_instances_are_equal(
+            copycat_instance, reloaded_copycat_instance
         )
     )
 

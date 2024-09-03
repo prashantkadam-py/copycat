@@ -315,38 +315,78 @@ class Copycat:
     )
 
   @classmethod
-  def load(cls, path: str) -> "Copycat":
-    """Loads an existing Copycat model from a file.
+  def from_dict(cls, params: dict[str, Any]) -> "Copycat":
+    """Loads the model from the provided dict.
+
+    Schema of params:
+      ad_copy_vectorstore: The ad copy vectorstore to use. This is a dict
+        containing the parameters to use to create the ad copy vectorstore. See
+        AdCopyVectorstore.from_dict for the required keys.
+      ad_format_params: The parameters to use to create the ad format. Must
+        include the following keys:
+        - max_headlines: The maximum number of headlines to generate.
+        - max_descriptions: The maximum number of descriptions to generate.
 
     Args:
-      path: The path to the directory containing the Copycat model.
+      params: The dict containing the parameters to use to create the Copycat
+        model. See above for the schema.
 
     Returns:
       A Copycat model.
+
+    Raises:
+      KeyError: If any of the required keys are missing from the dict.
     """
-
-    with open(f"{path}/{COPYCAT_PARAMS_FILE_NAME}", "r") as f:
-      params = json.load(f)
-
-    ad_copy_vectorstore = ad_copy_generator.AdCopyVectorstore.load(path)
+    required_keys = {
+        "ad_copy_vectorstore",
+        "ad_format_params",
+    }
+    missing_keys = required_keys - set(params.keys())
+    if missing_keys:
+      raise KeyError(f"Missing required keys: {missing_keys}")
 
     return cls(
-        ad_copy_vectorstore=ad_copy_vectorstore,
+        ad_copy_vectorstore=ad_copy_generator.AdCopyVectorstore.from_dict(
+            params["ad_copy_vectorstore"]
+        ),
         ad_format=GoogleAdFormat(**params["ad_format_params"]),
     )
 
-  def write(self, path: str) -> None:
-    """Writes the model to the persist path specified in the constructor.
+  def to_dict(self) -> dict[str, Any]:
+    """Serializes the model to a dict."""
+    return {
+        "ad_format_params": self.ad_format.model_dump(),
+        "ad_copy_vectorstore": self.ad_copy_vectorstore.to_dict(),
+    }
+
+  @classmethod
+  def from_json(cls, json_string: str) -> "Copycat":
+    """Loads the model from the provided json string.
+
+    Schema of params:
+      ad_copy_vectorstore: The ad copy vectorstore to use. This is a dict
+        containing the parameters to use to create the ad copy vectorstore. See
+        AdCopyVectorstore.from_dict for the required keys.
+      ad_format_params: The parameters to use to create the ad format. Must
+        include the following keys:
+        - max_headlines: The maximum number of headlines to generate.
+        - max_descriptions: The maximum number of descriptions to generate.
 
     Args:
-      path: The path to write the model to.
+      json_string: The json string containing the parameters to use to create
+        the Copycat model. See above for the schema.
+
+    Returns:
+      A Copycat model.
+
+    Raises:
+      KeyError: If any of the required keys are missing from the dict.
     """
-    params = {"ad_format_params": self.ad_format.model_dump()}
+    return cls.from_dict(json.loads(json_string))
 
-    with open(f"{path}/{COPYCAT_PARAMS_FILE_NAME}", "w") as f:
-      json.dump(params, f)
-
-    self.ad_copy_vectorstore.write(path)
+  def to_json(self) -> str:
+    """Serializes the model to a json string."""
+    return json.dumps(self.to_dict())
 
   def construct_responses(
       self,

@@ -308,7 +308,7 @@ class AdCopyVectorstoreTest(parameterized.TestCase):
 
       mock_affinity_propagation.assert_called_once()
 
-  def test_write_and_load_loads_the_same_instance(self):
+  def test_to_dict_and_from_dict_returns_same_ad_copy_vectorstore(self):
     training_data = pd.DataFrame.from_records([
         {
             "headlines": ["headline 1", "headline 2"],
@@ -339,15 +339,105 @@ class AdCopyVectorstoreTest(parameterized.TestCase):
             exemplar_selection_method="random",
         )
     )
-    ad_copy_vectorstore.write(self.tmp_dir.full_path)
 
-    loaded_ad_copy_vectorstore = ad_copy_generator.AdCopyVectorstore.load(
-        self.tmp_dir.full_path
+    reloaded_ad_copy_vectorstore = (
+        ad_copy_generator.AdCopyVectorstore.from_dict(
+            ad_copy_vectorstore.to_dict()
+        )
     )
 
     self.assertTrue(
         testing_utils.vectorstore_instances_are_equal(
-            ad_copy_vectorstore, loaded_ad_copy_vectorstore
+            ad_copy_vectorstore, reloaded_ad_copy_vectorstore
+        )
+    )
+
+  @parameterized.parameters([
+      "embedding_model_name",
+      "dimensionality",
+      "embeddings_batch_size",
+      "ad_exemplars",
+  ])
+  def test_from_dict_raises_key_error_if_required_key_is_missing(
+      self, required_key
+  ):
+    with self.assertRaises(KeyError):
+      training_data = pd.DataFrame.from_records([
+          {
+              "headlines": ["headline 1", "headline 2"],
+              "descriptions": ["description 1", "description 2"],
+              "keywords": "keyword 1, keyword 2",
+          },
+          {
+              "headlines": ["headline 3"],
+              "descriptions": ["description 3"],
+              "keywords": "keyword 3, keyword 4",
+          },
+          {
+              "headlines": ["headline 4", "headline 5"],
+              "descriptions": ["description 2"],
+              "keywords": "keyword 5, keyword 6",
+          },
+      ])
+
+      ad_copy_vectorstore = (
+          ad_copy_generator.AdCopyVectorstore.create_from_pandas(
+              training_data=training_data,
+              embedding_model_name="text-embedding-004",
+              dimensionality=256,
+              max_initial_ads=100,
+              max_exemplar_ads=10,
+              affinity_preference=None,
+              embeddings_batch_size=10,
+              exemplar_selection_method="random",
+          )
+      )
+
+      ad_copy_vectorstore_dict = ad_copy_vectorstore.to_dict()
+      del ad_copy_vectorstore_dict[required_key]
+      ad_copy_generator.AdCopyVectorstore.from_dict(ad_copy_vectorstore_dict)
+
+  def test_to_json_and_from_json_returns_same_ad_copy_vectorstore(self):
+    training_data = pd.DataFrame.from_records([
+        {
+            "headlines": ["headline 1", "headline 2"],
+            "descriptions": ["description 1", "description 2"],
+            "keywords": "keyword 1, keyword 2",
+        },
+        {
+            "headlines": ["headline 3"],
+            "descriptions": ["description 3"],
+            "keywords": "keyword 3, keyword 4",
+        },
+        {
+            "headlines": ["headline 4", "headline 5"],
+            "descriptions": ["description 2"],
+            "keywords": "keyword 5, keyword 6",
+        },
+    ])
+
+    ad_copy_vectorstore = (
+        ad_copy_generator.AdCopyVectorstore.create_from_pandas(
+            training_data=training_data,
+            embedding_model_name="text-embedding-004",
+            dimensionality=256,
+            max_initial_ads=100,
+            max_exemplar_ads=10,
+            affinity_preference=None,
+            embeddings_batch_size=10,
+            exemplar_selection_method="random",
+        )
+    )
+
+    reloaded_ad_copy_vectorstore = (
+        ad_copy_generator.AdCopyVectorstore.from_json(
+            ad_copy_vectorstore.to_json()
+        )
+    )
+
+    self.assertTrue(
+        testing_utils.vectorstore_instances_are_equal(
+            ad_copy_vectorstore, reloaded_ad_copy_vectorstore
         )
     )
 

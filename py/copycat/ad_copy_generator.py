@@ -19,7 +19,7 @@ import enum
 import functools
 import json
 import re
-from typing import Any, AsyncIterable, Coroutine, Hashable, TypeVar, Union
+from typing import Any, AsyncIterable, Coroutine, Hashable, TypeVar
 
 import bs4
 from vertexai import generative_models
@@ -416,35 +416,80 @@ class AdCopyVectorstore:
     )
 
   @classmethod
-  def load(cls, path: str) -> "AdCopyVectorstore":
-    """Loads the vectorstore from the provided path."""
+  def from_dict(cls, params: dict[str, Any]) -> "AdCopyVectorstore":
+    """Loads the vectorstore from the provided dict.
 
-    with open(f"{path}/{VECTORSTORE_PARAMS_FILE_NAME}", "r") as f:
-      params = json.load(f)
+    Schema of params:
+      embedding_model_name: The name of the embedding model to use.
+      ad_exemplars: The ad exemplars to use in the vectorstore, as a pandas
+        dataframe that has been converted to a dict with to_dict("tight").
+      dimensionality: The dimensionality of the embedding model.
+      embeddings_batch_size: The batch size to use when generating embeddings.
 
+    Args:
+      params: The dict containing the parameters to use to create the
+        AdCopyVectorstore. See above for the schema.
+
+    Returns:
+      An instance of the AdCopyVectorstore.
+
+    Raises:
+      KeyError: If any of the required keys are missing from the dict.
+    """
+    required_keys = {
+        "embedding_model_name",
+        "ad_exemplars",
+        "dimensionality",
+        "embeddings_batch_size",
+    }
+    missing_keys = required_keys - set(params.keys())
+    if missing_keys:
+      raise KeyError(f"Missing required keys: {missing_keys}")
+
+    params = params.copy()
     params["embedding_model_name"] = EmbeddingModelName(
         params["embedding_model_name"]
     )
-    params["ad_exemplars"] = pd.read_parquet(
-        f"{path}/{VECTORSTORE_AD_EXEMPLARS_FILE_NAME}"
+    params["ad_exemplars"] = pd.DataFrame.from_dict(
+        params["ad_exemplars"], orient="tight"
     )
-
     return cls(**params)
 
-  def write(self, path: str) -> None:
-    """Writes the vectorstore to the provided path."""
+  @classmethod
+  def from_json(cls, json_string: str) -> "AdCopyVectorstore":
+    """Loads the vectorstore from the provided json string.
 
-    params = {
+    Schema of params:
+      embedding_model_name: The name of the embedding model to use.
+      ad_exemplars: The ad exemplars to use in the vectorstore, as a pandas
+        dataframe that has been converted to a dict with to_dict("tight").
+      dimensionality: The dimensionality of the embedding model.
+      embeddings_batch_size: The batch size to use when generating embeddings.
+
+    Args:
+      json_string: The json string containing the parameters to use to create
+        the AdCopyVectorstore. See above for the schema.
+
+    Returns:
+      An instance of the AdCopyVectorstore.
+
+    Raises:
+      KeyError: If any of the required keys are missing from the dict.
+    """
+    return cls.from_dict(json.loads(json_string))
+
+  def to_dict(self) -> dict[str, Any]:
+    """Serializes the vectorstore to a dict."""
+    return {
         "embedding_model_name": self.embedding_model_name.value,
         "dimensionality": self.dimensionality,
         "embeddings_batch_size": self.embeddings_batch_size,
+        "ad_exemplars": self.ad_exemplars.to_dict(orient="tight"),
     }
-    with open(f"{path}/{VECTORSTORE_PARAMS_FILE_NAME}", "w") as f:
-      json.dump(params, f)
 
-    self.ad_exemplars.to_parquet(
-        f"{path}/{VECTORSTORE_AD_EXEMPLARS_FILE_NAME}", index=False
-    )
+  def to_json(self) -> str:
+    """Serializes the vectorstore to a json string."""
+    return json.dumps(self.to_dict())
 
   @functools.cached_property
   def nearest_neighbors(self) -> neighbors.NearestNeighbors:
