@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import json
+import keyword
 
 from absl.testing import absltest
 from absl.testing import parameterized
@@ -436,13 +437,16 @@ class CopycatTest(parameterized.TestCase):
       dict(
           testcase_name="without keyword specific instructions",
           keywords="my keyword 1, my keyword 2",
+          existing_headlines=None,
+          existing_descriptions=None,
           keywords_specific_instructions="",
           expected_prompt=[
               generative_models.Content(
                   role="user",
                   parts=[
                       generative_models.Part.from_text(
-                          "Keywords: keyword 11a, keyword 11b"
+                          "Please write 2 headlines and 1 descriptions for this"
+                          " ad.\n\nKeywords: keyword 11a, keyword 11b"
                       )
                   ],
               ),
@@ -459,7 +463,8 @@ class CopycatTest(parameterized.TestCase):
                   role="user",
                   parts=[
                       generative_models.Part.from_text(
-                          "Keywords: keyword 20a, keyword 20b"
+                          "Please write 2 headlines and 1 descriptions for this"
+                          " ad.\n\nKeywords: keyword 20a, keyword 20b"
                       )
                   ],
               ),
@@ -476,7 +481,8 @@ class CopycatTest(parameterized.TestCase):
                   role="user",
                   parts=[
                       generative_models.Part.from_text(
-                          "Keywords: my keyword 1, my keyword 2"
+                          "Please write 3 headlines and 2 descriptions for this"
+                          " ad.\n\nKeywords: my keyword 1, my keyword 2"
                       )
                   ],
               ),
@@ -485,13 +491,16 @@ class CopycatTest(parameterized.TestCase):
       dict(
           testcase_name="with keyword specific instructions",
           keywords="my keyword 1, my keyword 2",
+          existing_headlines=None,
+          existing_descriptions=None,
           keywords_specific_instructions="Some keyword specific instructions.",
           expected_prompt=[
               generative_models.Content(
                   role="user",
                   parts=[
                       generative_models.Part.from_text(
-                          "Keywords: keyword 11a, keyword 11b"
+                          "Please write 2 headlines and 1 descriptions for this"
+                          " ad.\n\nKeywords: keyword 11a, keyword 11b"
                       )
                   ],
               ),
@@ -508,7 +517,8 @@ class CopycatTest(parameterized.TestCase):
                   role="user",
                   parts=[
                       generative_models.Part.from_text(
-                          "Keywords: keyword 20a, keyword 20b"
+                          "Please write 2 headlines and 1 descriptions for this"
+                          " ad.\n\nKeywords: keyword 20a, keyword 20b"
                       )
                   ],
               ),
@@ -527,8 +537,67 @@ class CopycatTest(parameterized.TestCase):
                       generative_models.Part.from_text(
                           f"For the next set of keywords, please consider the"
                           f" following additional instructions:\n\nSome keyword"
-                          f" specific instructions.\n\nKeywords: my keyword 1,"
-                          f" my keyword 2"
+                          f" specific instructions.\n\nPlease write 3 headlines"
+                          f" and 2 descriptions for this ad.\n\nKeywords: my"
+                          f" keyword 1, my keyword 2"
+                      )
+                  ],
+              ),
+          ],
+      ),
+      dict(
+          testcase_name="with existing ad copy",
+          keywords="my keyword 1, my keyword 2",
+          existing_headlines=["existing headline"],
+          existing_descriptions=["existing description"],
+          keywords_specific_instructions="",
+          expected_prompt=[
+              generative_models.Content(
+                  role="user",
+                  parts=[
+                      generative_models.Part.from_text(
+                          "Please write 2 headlines and 1 descriptions for this"
+                          " ad.\n\nKeywords: keyword 11a, keyword 11b"
+                      )
+                  ],
+              ),
+              generative_models.Content(
+                  role="model",
+                  parts=[
+                      generative_models.Part.from_text(
+                          '{"headlines":["train headline 11","train headline 11'
+                          ' (2)"],"descriptions":["train description 11"]}'
+                      )
+                  ],
+              ),
+              generative_models.Content(
+                  role="user",
+                  parts=[
+                      generative_models.Part.from_text(
+                          "Please write 2 headlines and 1 descriptions for this"
+                          " ad.\n\nKeywords: keyword 20a, keyword 20b"
+                      )
+                  ],
+              ),
+              generative_models.Content(
+                  role="model",
+                  parts=[
+                      generative_models.Part.from_text(
+                          '{"headlines":["train headline 20","train headline 20'
+                          ' (2)"],"descriptions":["train description 20"]}'
+                      )
+                  ],
+              ),
+              generative_models.Content(
+                  role="user",
+                  parts=[
+                      generative_models.Part.from_text(
+                          "This ad already has 1 headlines and 1"
+                          " descriptions:\n\n- headlines: ['existing"
+                          " headline']\n- descriptions: ['existing"
+                          " description']\n\nPlease write 2 more headlines and"
+                          " 1 more descriptions to complete this"
+                          " ad.\n\nKeywords: my keyword 1, my keyword 2"
                       )
                   ],
               ),
@@ -538,6 +607,8 @@ class CopycatTest(parameterized.TestCase):
   def test_construct_text_generation_requests_for_new_ad_copy_returns_expected_request(
       self,
       keywords,
+      existing_headlines,
+      existing_descriptions,
       keywords_specific_instructions,
       expected_prompt,
   ):
@@ -550,6 +621,8 @@ class CopycatTest(parameterized.TestCase):
     request = (
         copycat_instance.construct_text_generation_requests_for_new_ad_copy(
             keywords=[keywords],
+            existing_headlines=[existing_headlines],
+            existing_descriptions=[existing_descriptions],
             keywords_specific_instructions=[keywords_specific_instructions],
             num_in_context_examples=2,
             system_instruction="Example system instruction",
@@ -565,9 +638,29 @@ class CopycatTest(parameterized.TestCase):
         top_k=20,
         top_p=0.95,
         safety_settings=None,
+        existing_ad_copy=google_ads.GoogleAd(
+            headlines=existing_headlines or [],
+            descriptions=existing_descriptions or [],
+        ),
     )
     self.assertEqual(expected_request.to_markdown(), request.to_markdown())
 
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="with existing ad copy",
+          existing_headlines=["existing headline"],
+          existing_descriptions=["existing description"],
+          expected_style_similarity=0.5590658228752542,
+          expected_keyword_similarity=0.5056089825975687,
+      ),
+      dict(
+          testcase_name="without existing ad copy",
+          existing_headlines=None,
+          existing_descriptions=None,
+          expected_style_similarity=0.5338446522650305,
+          expected_keyword_similarity=0.47668610866645195,
+      ),
+  )
   @testing_utils.PatchGenerativeModel(
       response=(
           '{"headlines": ["generated headline 1", "generated headline 2"],'
@@ -575,7 +668,62 @@ class CopycatTest(parameterized.TestCase):
       )
   )
   def test_generate_new_ad_copy_returns_expected_response(
-      self, generative_model_patcher
+      self,
+      generative_model_patcher,
+      existing_headlines,
+      existing_descriptions,
+      expected_style_similarity,
+      expected_keyword_similarity,
+  ):
+
+    copycat_instance = copycat.Copycat.create_from_pandas(
+        training_data=self.training_data(20),
+        embedding_model_name="text-embedding-004",
+        ad_format="text_ad",
+        vectorstore_exemplar_selection_method="random",
+    )
+    response = copycat_instance.generate_new_ad_copy(
+        keywords=["my keyword 1, my keyword 2"],
+        style_guide="This is my style guide.",
+        num_in_context_examples=2,
+        system_instruction_kwargs=dict(
+            company_name="My company",
+            language="english",
+        ),
+        existing_headlines=[existing_headlines],
+        existing_descriptions=[existing_descriptions],
+    )[0]
+
+    existing_headlines = existing_headlines or []
+    existing_descriptions = existing_descriptions or []
+    generated_headlines = ["generated headline 1", "generated headline 2"]
+    generated_descriptions = ["generated description"]
+
+    self.assertEqual(
+        response,
+        copycat.CopycatResponse(
+            google_ad=google_ads.GoogleAd(
+                headlines=existing_headlines + generated_headlines,
+                descriptions=existing_descriptions + generated_descriptions,
+            ),
+            keywords="my keyword 1, my keyword 2",
+            evaluation_results=copycat.EvaluationResults(
+                errors=[],
+                warnings=[],
+                headlines_are_memorised=False,
+                descriptions_are_memorised=False,
+                style_similarity=expected_style_similarity,
+                keyword_similarity=expected_keyword_similarity,
+            ),
+        ),
+    )
+
+  @testing_utils.PatchGenerativeModel(
+      response='{"descriptions": ["generated description"]}'
+  )
+  def test_generate_new_ad_copy_returns_expected_response_if_headlines_is_missing(
+      self,
+      generative_model_patcher,
   ):
 
     copycat_instance = copycat.Copycat.create_from_pandas(
@@ -593,21 +741,75 @@ class CopycatTest(parameterized.TestCase):
             language="english",
         ),
     )[0]
+
+    # I don't want to test the similarity metrics here, so I'm just setting
+    # them to None.
+    response.evaluation_results.style_similarity = None
+    response.evaluation_results.keyword_similarity = None
+
     self.assertEqual(
         response,
         copycat.CopycatResponse(
             google_ad=google_ads.GoogleAd(
-                headlines=["generated headline 1", "generated headline 2"],
+                headlines=[],
                 descriptions=["generated description"],
             ),
             keywords="my keyword 1, my keyword 2",
             evaluation_results=copycat.EvaluationResults(
-                errors=[],
+                errors=["Invalid number of headlines for the ad format."],
                 warnings=[],
                 headlines_are_memorised=False,
                 descriptions_are_memorised=False,
-                style_similarity=0.5338446522650305,
-                keyword_similarity=0.47668610866645195,
+                style_similarity=None,
+                keyword_similarity=None,
+            ),
+        ),
+    )
+
+  @testing_utils.PatchGenerativeModel(
+      response='{"headlines": ["generated headline"]}'
+  )
+  def test_generate_new_ad_copy_returns_expected_response_if_descriptions_is_missing(
+      self,
+      generative_model_patcher,
+  ):
+
+    copycat_instance = copycat.Copycat.create_from_pandas(
+        training_data=self.training_data(20),
+        embedding_model_name="text-embedding-004",
+        ad_format="text_ad",
+        vectorstore_exemplar_selection_method="random",
+    )
+    response = copycat_instance.generate_new_ad_copy(
+        keywords=["my keyword 1, my keyword 2"],
+        style_guide="This is my style guide.",
+        num_in_context_examples=2,
+        system_instruction_kwargs=dict(
+            company_name="My company",
+            language="english",
+        ),
+    )[0]
+
+    # I don't want to test the similarity metrics here, so I'm just setting
+    # them to None.
+    response.evaluation_results.style_similarity = None
+    response.evaluation_results.keyword_similarity = None
+
+    self.assertEqual(
+        response,
+        copycat.CopycatResponse(
+            google_ad=google_ads.GoogleAd(
+                headlines=["generated headline"],
+                descriptions=[],
+            ),
+            keywords="my keyword 1, my keyword 2",
+            evaluation_results=copycat.EvaluationResults(
+                errors=["Invalid number of descriptions for the ad format."],
+                warnings=[],
+                headlines_are_memorised=False,
+                descriptions_are_memorised=False,
+                style_similarity=None,
+                keyword_similarity=None,
             ),
         ),
     )
@@ -639,9 +841,21 @@ class CopycatTest(parameterized.TestCase):
     )
     self.assertLen(responses, 2)
 
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="with existing ad copy",
+          existing_headlines=["existing headline"],
+          existing_descriptions=["existing description"],
+      ),
+      dict(
+          testcase_name="without existing ad copy",
+          existing_headlines=None,
+          existing_descriptions=None,
+      ),
+  )
   @testing_utils.PatchGenerativeModel(response="not a json")
   def test_generate_new_ad_copy_returns_expected_response_for_non_json_chat_model_output(
-      self, generative_model_patcher
+      self, generative_model_patcher, existing_headlines, existing_descriptions
   ):
 
     copycat_instance = copycat.Copycat.create_from_pandas(
@@ -659,13 +873,23 @@ class CopycatTest(parameterized.TestCase):
             company_name="My company",
             language="english",
         ),
+        existing_headlines=[existing_headlines],
+        existing_descriptions=[existing_descriptions],
     )[0]
+
+    # I don't want to test the similarity metrics here, so I'm just setting
+    # them to None.
+    response.evaluation_results.style_similarity = None
+    response.evaluation_results.keyword_similarity = None
 
     self.assertEqual(
         response,
         copycat.CopycatResponse(
             keywords="my keyword 1, my keyword 2",
-            google_ad=google_ads.GoogleAd(headlines=[], descriptions=[]),
+            google_ad=google_ads.GoogleAd(
+                headlines=existing_headlines or [],
+                descriptions=existing_descriptions or [],
+            ),
             evaluation_results=copycat.EvaluationResults(
                 errors=[
                     "1 validation error for GoogleAd\n  Invalid JSON: expected"
@@ -675,8 +899,10 @@ class CopycatTest(parameterized.TestCase):
                     " https://errors.pydantic.dev/2.6/v/json_invalid"
                 ],
                 warnings=[],
-                headlines_are_memorised=None,
-                descriptions_are_memorised=None,
+                headlines_are_memorised=False if existing_headlines else None,
+                descriptions_are_memorised=False
+                if existing_descriptions
+                else None,
                 style_similarity=None,
                 keyword_similarity=None,
             ),
@@ -793,8 +1019,28 @@ class CopycatTest(parameterized.TestCase):
 
       self.assertEqual(response, expected_response)
 
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="with existing ad copy",
+          existing_headlines=["existing headline"],
+          existing_descriptions=["existing description"],
+          expected_style_similarity=0.569982855557986,
+          expected_keyword_similarity=0.49631553094971914,
+      ),
+      dict(
+          testcase_name="without existing ad copy",
+          existing_headlines=None,
+          existing_descriptions=None,
+          expected_style_similarity=None,
+          expected_keyword_similarity=None,
+      ),
+  )
   def test_generate_new_ad_copy_returns_expected_response_if_chat_model_fails_to_generate(
       self,
+      existing_headlines,
+      existing_descriptions,
+      expected_style_similarity,
+      expected_keyword_similarity,
   ):
     failed_response = generative_models.GenerationResponse.from_dict({
         "candidates": [{
@@ -820,11 +1066,13 @@ class CopycatTest(parameterized.TestCase):
           ),
           allow_memorised_headlines=False,
           allow_memorised_descriptions=False,
+          existing_headlines=[existing_headlines],
+          existing_descriptions=[existing_descriptions],
       )[0]
 
       expected_google_ad = google_ads.GoogleAd(
-          headlines=[],
-          descriptions=[],
+          headlines=existing_headlines or [],
+          descriptions=existing_descriptions or [],
       )
 
       expected_response = copycat.CopycatResponse(
@@ -833,10 +1081,12 @@ class CopycatTest(parameterized.TestCase):
           evaluation_results=copycat.EvaluationResults(
               errors=[str(failed_response.candidates[0])],
               warnings=[],
-              headlines_are_memorised=None,
-              descriptions_are_memorised=None,
-              style_similarity=None,
-              keyword_similarity=None,
+              headlines_are_memorised=False if existing_headlines else None,
+              descriptions_are_memorised=False
+              if existing_descriptions
+              else None,
+              style_similarity=expected_style_similarity,
+              keyword_similarity=expected_keyword_similarity,
           ),
       )
       self.assertEqual(response, expected_response)
@@ -937,7 +1187,7 @@ class CopycatTest(parameterized.TestCase):
           ' "descriptions": ["generated description"]}'
       )
   )
-  def test_generate_new_ad_copy_uses_keyword_specific_instructions_if_provided(
+  def test_generate_new_ad_copy_raises_exception_if_different_number_of_keywords_and_existing_headlines(
       self, generative_model_patcher
   ):
     copycat_instance = copycat.Copycat.create_from_pandas(
@@ -946,30 +1196,23 @@ class CopycatTest(parameterized.TestCase):
         ad_format="text_ad",
         vectorstore_exemplar_selection_method="random",
     )
-
-    _ = copycat_instance.generate_new_ad_copy(
-        keywords=["my keyword 1, my keyword 2"],
-        keywords_specific_instructions=[
-            "Some keyword specific instructions.",
-        ],
-        style_guide="This is my style guide.",
-        num_in_context_examples=2,
-        system_instruction_kwargs=dict(
-            company_name="My company",
-            language="english",
-        ),
-    )[0]
-
-    mock_generate_content_async = (
-        generative_model_patcher.mock_generative_model.generate_content_async
-    )
-
-    self.assertEqual(
-        mock_generate_content_async.call_args[0][0][-1].parts[0].text,
-        "For the next set of keywords, please consider the following additional"
-        " instructions:\n\nSome keyword specific instructions.\n\nKeywords: my"
-        " keyword 1, my keyword 2",
-    )
+    with self.assertRaisesWithLiteralMatch(
+        ValueError,
+        "keywords and existing_headlines must have the same length.",
+    ):
+      copycat_instance.generate_new_ad_copy(
+          keywords=["my keyword 1, my keyword 2"],
+          existing_headlines=[
+              ["headline 1"],
+              ["headline 2"],
+          ],
+          style_guide="This is my style guide.",
+          num_in_context_examples=2,
+          system_instruction_kwargs=dict(
+              company_name="My company",
+              language="english",
+          ),
+      )
 
   @testing_utils.PatchGenerativeModel(
       response=(
@@ -977,8 +1220,87 @@ class CopycatTest(parameterized.TestCase):
           ' "descriptions": ["generated description"]}'
       )
   )
-  def test_generate_new_ad_copy_uses_no_keyword_specific_instructions_if_not_provided(
+  def test_generate_new_ad_copy_raises_exception_if_different_number_of_keywords_and_existing_descriptions(
       self, generative_model_patcher
+  ):
+    copycat_instance = copycat.Copycat.create_from_pandas(
+        training_data=self.training_data(20),
+        embedding_model_name="text-embedding-004",
+        ad_format="text_ad",
+        vectorstore_exemplar_selection_method="random",
+    )
+    with self.assertRaisesWithLiteralMatch(
+        ValueError,
+        "keywords and existing_descriptions must have the same length.",
+    ):
+      copycat_instance.generate_new_ad_copy(
+          keywords=["my keyword 1, my keyword 2"],
+          existing_descriptions=[
+              ["description 1"],
+              ["description 2"],
+          ],
+          style_guide="This is my style guide.",
+          num_in_context_examples=2,
+          system_instruction_kwargs=dict(
+              company_name="My company",
+              language="english",
+          ),
+      )
+
+  @parameterized.named_parameters([
+      dict(
+          testcase_name="with_keyword_specific_instructions",
+          keywords_specific_instructions=[
+              "Some keyword specific instructions."
+          ],
+          existing_headlines=None,
+          existing_descriptions=None,
+          expected_final_message=(
+              "For the next set of keywords, please consider the following"
+              " additional instructions:\n\nSome keyword specific"
+              " instructions.\n\nPlease write 3 headlines and 2 descriptions"
+              " for this ad.\n\nKeywords: my keyword 1, my keyword 2"
+          ),
+      ),
+      dict(
+          testcase_name="without_keyword_specific_instructions",
+          keywords_specific_instructions=None,
+          existing_headlines=None,
+          existing_descriptions=None,
+          expected_final_message=(
+              "Please write 3 headlines and 2 descriptions"
+              " for this ad.\n\nKeywords: my keyword 1, my keyword 2"
+          ),
+      ),
+      dict(
+          testcase_name="with_existing_headlines_and_descriptions",
+          keywords_specific_instructions=None,
+          existing_headlines=[["existing headline 1"]],
+          existing_descriptions=[
+              ["existing description 1"],
+          ],
+          expected_final_message=(
+              "This ad already has 1 headlines and 1 descriptions:\n\n-"
+              " headlines: ['existing headline 1']\n- descriptions: ['existing"
+              " description 1']\n\nPlease write 2 more headlines and 1 more"
+              " descriptions to complete this ad.\n\nKeywords: my keyword 1, my"
+              " keyword 2"
+          ),
+      ),
+  ])
+  @testing_utils.PatchGenerativeModel(
+      response=(
+          '{"headlines": ["generated headline 1", "generated headline 2"],'
+          ' "descriptions": ["generated description"]}'
+      )
+  )
+  def test_generate_new_ad_copy_uses_expected_prompt_final_message(
+      self,
+      generative_model_patcher,
+      keywords_specific_instructions,
+      existing_headlines,
+      existing_descriptions,
+      expected_final_message,
   ):
     copycat_instance = copycat.Copycat.create_from_pandas(
         training_data=self.training_data(20),
@@ -989,12 +1311,15 @@ class CopycatTest(parameterized.TestCase):
 
     _ = copycat_instance.generate_new_ad_copy(
         keywords=["my keyword 1, my keyword 2"],
+        keywords_specific_instructions=keywords_specific_instructions,
         style_guide="This is my style guide.",
         num_in_context_examples=2,
         system_instruction_kwargs=dict(
             company_name="My company",
             language="english",
         ),
+        existing_headlines=existing_headlines,
+        existing_descriptions=existing_descriptions,
     )[0]
 
     mock_generate_content_async = (
@@ -1003,7 +1328,7 @@ class CopycatTest(parameterized.TestCase):
 
     self.assertEqual(
         mock_generate_content_async.call_args[0][0][-1].parts[0].text,
-        "Keywords: my keyword 1, my keyword 2",
+        expected_final_message,
     )
 
 

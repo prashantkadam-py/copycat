@@ -84,6 +84,7 @@ class TextGenerationRequestTest(parameterized.TestCase):
         top_k=20,
         top_p=0.95,
         safety_settings=None,
+        existing_ad_copy=google_ads.GoogleAd(headlines=[], descriptions=[]),
     )
 
     expected_markdown = textwrap.dedent(
@@ -102,6 +103,93 @@ class TextGenerationRequestTest(parameterized.TestCase):
 
       Top P: 0.95
       
+      Safety settings: None
+
+      **System instruction:**
+
+      My system instruction
+
+      **User:**
+
+      {"Keywords": "keyword 1, keyword 2", "additional_instructions": ""}
+
+      **Model:**
+
+      {"headlines":["headline 1","headline 2"],"descriptions":["description 1","description 2"]}
+
+      **User:**
+
+      {"Keywords": "keyword 3, keyword 4", "additional_instructions": "something"}"""
+    )
+    self.assertEqual(request.to_markdown(), expected_markdown)
+
+  def test_to_markdown_returns_expected_markdown_with_existing_ad_copy(self):
+    request = ad_copy_generator.TextGenerationRequest(
+        keywords="keyword 1, keyword 2",
+        prompt=[
+            generative_models.Content(
+                role="user",
+                parts=[
+                    generative_models.Part.from_text(
+                        '{"Keywords": "keyword 1, keyword 2",'
+                        ' "additional_instructions": ""}'
+                    )
+                ],
+            ),
+            generative_models.Content(
+                role="model",
+                parts=[
+                    generative_models.Part.from_text(
+                        '{"headlines":["headline 1","headline 2"],'
+                        '"descriptions":["description 1","description 2"]}'
+                    )
+                ],
+            ),
+            generative_models.Content(
+                role="user",
+                parts=[
+                    generative_models.Part.from_text(
+                        '{"Keywords": "keyword 3, keyword 4",'
+                        ' "additional_instructions": "something"}'
+                    )
+                ],
+            ),
+        ],
+        system_instruction="My system instruction",
+        chat_model_name=ad_copy_generator.ModelName.GEMINI_1_5_FLASH,
+        temperature=0.95,
+        top_k=20,
+        top_p=0.95,
+        safety_settings=None,
+        existing_ad_copy=google_ads.GoogleAd(
+            headlines=["headline 1"], descriptions=["description 1"]
+        ),
+    )
+
+    expected_markdown = textwrap.dedent(
+        """\
+      **Keywords:**
+
+      keyword 1, keyword 2
+
+      **Existing headlines:**
+
+      ['headline 1']
+
+      **Existing descriptions:**
+
+      ['description 1']
+
+      **Model Parameters:**
+
+      Model name: gemini-1.5-flash-preview-0514
+
+      Temperature: 0.95
+
+      Top K: 20
+
+      Top P: 0.95
+
       Safety settings: None
 
       **System instruction:**
@@ -586,8 +674,149 @@ class AdCopyGeneratorTest(parameterized.TestCase):
     expected_instruction = "My system instruction"
     self.assertEqual(instruction, expected_instruction)
 
-  def test_construct_new_ad_copy_prompt_constructs_expected_prompt_with_keywords_specific_instructions(
+  @parameterized.named_parameters([
+      {
+          "testcase_name": (
+              "without keyword specific instructions or existing ad copy"
+          ),
+          "existing_ad_copy": None,
+          "keyword_specific_instructions": "",
+          "expected_final_message": (
+              "Please write 3 headlines and 2 descriptions for this"
+              " ad.\n\nKeywords: Keyword 1, Keyword 2, keyword λ"
+          ),
+      },
+      {
+          "testcase_name": "with keyword specific instructions",
+          "existing_ad_copy": None,
+          "keyword_specific_instructions": (
+              "My keywords specific instructions with unicode ß"
+          ),
+          "expected_final_message": (
+              "For the next set of keywords, please consider the"
+              " following additional instructions:\n\nMy keywords"
+              " specific instructions with unicode ß\n\nPlease write 3"
+              " headlines and 2 descriptions for this ad.\n\nKeywords:"
+              " Keyword 1, Keyword 2, keyword λ"
+          ),
+      },
+      {
+          "testcase_name": "with existing headlines",
+          "existing_ad_copy": google_ads.GoogleAd(
+              headlines=["existing headline"], descriptions=[]
+          ),
+          "keyword_specific_instructions": "",
+          "expected_final_message": (
+              "This ad already has 1 headlines.\n\n- headlines: ['existing"
+              " headline']\n\nPlease write 2 more headlines and 2 more"
+              " descriptions to complete this ad.\n\nKeywords: Keyword 1,"
+              " Keyword 2, keyword λ"
+          ),
+      },
+      {
+          "testcase_name": "with existing descriptions",
+          "existing_ad_copy": google_ads.GoogleAd(
+              headlines=[], descriptions=["existing description"]
+          ),
+          "keyword_specific_instructions": "",
+          "expected_final_message": (
+              "This ad already has 1 descriptions.\n\n- descriptions:"
+              " ['existing description']\n\nPlease write 3 more headlines and 1"
+              " more descriptions to complete this ad.\n\nKeywords: Keyword 1,"
+              " Keyword 2, keyword λ"
+          ),
+      },
+      {
+          "testcase_name": "with existing headlines and descriptions",
+          "existing_ad_copy": google_ads.GoogleAd(
+              headlines=["existing headline"],
+              descriptions=["existing description"],
+          ),
+          "keyword_specific_instructions": "",
+          "expected_final_message": (
+              "This ad already has 1 headlines and 1 descriptions:\n\n-"
+              " headlines: ['existing headline']\n- descriptions: ['existing"
+              " description']\n\nPlease write 2 more headlines and 1 more"
+              " descriptions to complete this ad.\n\nKeywords: Keyword 1,"
+              " Keyword 2, keyword λ"
+          ),
+      },
+      {
+          "testcase_name": "with complete headlines",
+          "existing_ad_copy": google_ads.GoogleAd(
+              headlines=[
+                  "existing headline 1",
+                  "existing headline 2",
+                  "existing headline 3",
+              ],
+              descriptions=[],
+          ),
+          "keyword_specific_instructions": "",
+          "expected_final_message": (
+              "This ad already has 3 headlines.\n\n- headlines: ['existing"
+              " headline 1', 'existing headline 2', 'existing headline"
+              " 3']\n\nPlease write 2 more descriptions to complete this ad."
+              " You do not need to write any headlines, as there are enough"
+              " already.\n\nKeywords: Keyword 1, Keyword 2, keyword λ"
+          ),
+      },
+      {
+          "testcase_name": "with complete descriptions",
+          "existing_ad_copy": google_ads.GoogleAd(
+              headlines=[],
+              descriptions=["existing description 1", "existing description 2"],
+          ),
+          "keyword_specific_instructions": "",
+          "expected_final_message": (
+              "This ad already has 2 descriptions.\n\n- descriptions:"
+              " ['existing description 1', 'existing description 2']\n\nPlease"
+              " write 3 more headlines to complete this ad. You do not need to"
+              " write any descriptions, as there are enough"
+              " already.\n\nKeywords: Keyword 1, Keyword 2, keyword λ"
+          ),
+      },
+      {
+          "testcase_name": "with complete descriptions and some headlines",
+          "existing_ad_copy": google_ads.GoogleAd(
+              headlines=["existing headline"],
+              descriptions=["existing description 1", "existing description 2"],
+          ),
+          "keyword_specific_instructions": "",
+          "expected_final_message": (
+              "This ad already has 1 headlines and 2 descriptions:\n\n-"
+              " headlines: ['existing headline']\n- descriptions: ['existing"
+              " description 1', 'existing description 2']\n\nPlease write 2"
+              " more headlines to complete this ad. You do not need to write"
+              " any descriptions, as there are enough already.\n\nKeywords:"
+              " Keyword 1, Keyword 2, keyword λ"
+          ),
+      },
+      {
+          "testcase_name": "with complete headlines and some descriptions",
+          "existing_ad_copy": google_ads.GoogleAd(
+              headlines=[
+                  "existing headline 1",
+                  "existing headline 2",
+                  "existing headline 3",
+              ],
+              descriptions=["existing description"],
+          ),
+          "keyword_specific_instructions": "",
+          "expected_final_message": (
+              "This ad already has 3 headlines and 1 descriptions:\n\n-"
+              " headlines: ['existing headline 1', 'existing headline 2',"
+              " 'existing headline 3']\n- descriptions: ['existing"
+              " description']\n\nPlease write 1 more descriptions to complete"
+              " this ad. You do not need to write any headlines, as there are"
+              " enough already.\n\nKeywords: Keyword 1, Keyword 2, keyword λ"
+          ),
+      },
+  ])
+  def test_construct_new_ad_copy_prompt_constructs_expected_prompt(
       self,
+      existing_ad_copy,
+      keyword_specific_instructions,
+      expected_final_message,
   ):
     prompt = ad_copy_generator.construct_new_ad_copy_prompt(
         example_ads=[
@@ -609,10 +838,10 @@ class AdCopyGeneratorTest(parameterized.TestCase):
                 ),
             ),
         ],
-        keywords_specific_instructions=(
-            "My keywords specific instructions with unicode ß"
-        ),
+        keywords_specific_instructions=keyword_specific_instructions,
         keywords="Keyword 1, Keyword 2, keyword λ",
+        ad_format=google_ads.TEXT_AD_FORMAT,
+        existing_ad_copy=existing_ad_copy,
     )
 
     expected_prompt = [
@@ -620,7 +849,8 @@ class AdCopyGeneratorTest(parameterized.TestCase):
             role="user",
             parts=[
                 generative_models.Part.from_text(
-                    "Keywords: keyword 3, keyword 4"
+                    "Please write 1 headlines and 2 descriptions for this"
+                    " ad.\n\nKeywords: keyword 3, keyword 4"
                 )
             ],
         ),
@@ -637,7 +867,8 @@ class AdCopyGeneratorTest(parameterized.TestCase):
             role="user",
             parts=[
                 generative_models.Part.from_text(
-                    "Keywords: keyword 5, keyword 6"
+                    "Please write 2 headlines and 1 descriptions for this"
+                    " ad.\n\nKeywords: keyword 5, keyword 6"
                 )
             ],
         ),
@@ -652,14 +883,7 @@ class AdCopyGeneratorTest(parameterized.TestCase):
         ),
         generative_models.Content(
             role="user",
-            parts=[
-                generative_models.Part.from_text(
-                    "For the next set of keywords, please consider the"
-                    " following additional instructions:\n\nMy keywords"
-                    " specific instructions with unicode ß\n\nKeywords: Keyword"
-                    " 1, Keyword 2, keyword λ"
-                )
-            ],
+            parts=[generative_models.Part.from_text(expected_final_message)],
         ),
     ]
 
@@ -668,81 +892,39 @@ class AdCopyGeneratorTest(parameterized.TestCase):
           single_prompt.to_dict(), single_expected_prompt.to_dict()
       )
 
-  def test_construct_new_ad_copy_prompt_without_keywords_specific_instructions(
+  def test_construct_new_ad_copy_prompt_raises_value_error_for_complete_ad(
       self,
   ):
-    prompt = ad_copy_generator.construct_new_ad_copy_prompt(
-        example_ads=[
-            ad_copy_generator.ExampleAd(
-                keywords="keyword 5, keyword 6",
-                google_ad=google_ads.GoogleAd(
-                    headlines=["headline 4", "headline 5"],
-                    descriptions=["description 2"],
-                ),
-            ),
-            ad_copy_generator.ExampleAd(
-                keywords="keyword 3, keyword 4",
-                google_ad=google_ads.GoogleAd(
-                    headlines=["headline 3"],
-                    descriptions=[
-                        "description 3",
-                        "description with unicode weiß",
-                    ],
-                ),
-            ),
-        ],
-        keywords_specific_instructions="",
-        keywords="Keyword 1, Keyword 2",
-    )
-
-    expected_prompt = [
-        generative_models.Content(
-            role="user",
-            parts=[
-                generative_models.Part.from_text(
-                    "Keywords: keyword 3, keyword 4"
-                )
-            ],
-        ),
-        generative_models.Content(
-            role="model",
-            parts=[
-                generative_models.Part.from_text(
-                    '{"headlines":["headline 3"],"descriptions":'
-                    '["description 3","description with unicode weiß"]}'
-                )
-            ],
-        ),
-        generative_models.Content(
-            role="user",
-            parts=[
-                generative_models.Part.from_text(
-                    "Keywords: keyword 5, keyword 6"
-                )
-            ],
-        ),
-        generative_models.Content(
-            role="model",
-            parts=[
-                generative_models.Part.from_text(
-                    '{"headlines":["headline 4","headline 5"],'
-                    '"descriptions":["description 2"]}'
-                )
-            ],
-        ),
-        generative_models.Content(
-            role="user",
-            parts=[
-                generative_models.Part.from_text(
-                    "Keywords: Keyword 1, Keyword 2"
-                )
-            ],
-        ),
-    ]
-
-    for single_prompt, single_expected_prompt in zip(prompt, expected_prompt):
-      self.assertEqual(
-          single_prompt.to_dict(), single_expected_prompt.to_dict()
+    with self.assertRaisesWithLiteralMatch(
+        ValueError, "Trying to generate an ad that is already complete."
+    ):
+      ad_copy_generator.construct_new_ad_copy_prompt(
+          example_ads=[
+              ad_copy_generator.ExampleAd(
+                  keywords="keyword 5, keyword 6",
+                  google_ad=google_ads.GoogleAd(
+                      headlines=["headline 4", "headline 5"],
+                      descriptions=["description 2"],
+                  ),
+              ),
+              ad_copy_generator.ExampleAd(
+                  keywords="keyword 3, keyword 4",
+                  google_ad=google_ads.GoogleAd(
+                      headlines=["headline 3"],
+                      descriptions=[
+                          "description 3",
+                          "description with unicode weiß",
+                      ],
+                  ),
+              ),
+          ],
+          keywords_specific_instructions="",
+          keywords="Keyword 1, Keyword 2, keyword λ",
+          ad_format=google_ads.TEXT_AD_FORMAT,
+          existing_ad_copy=google_ads.GoogleAd(
+              headlines=["headline 1", "headline 2", "headline 3"],
+              descriptions=["description 1", "description 2"],
+          ),
       )
 
   @parameterized.named_parameters([
@@ -833,6 +1015,7 @@ class AdCopyGeneratorTest(parameterized.TestCase):
         top_k=40,
         top_p=0.95,
         safety_settings=None,
+        existing_ad_copy=google_ads.GoogleAd(headlines=[], descriptions=[]),
     )
     ad_copy_generator.generate_google_ad_json_batch([request])
 
@@ -864,6 +1047,7 @@ class AdCopyGeneratorTest(parameterized.TestCase):
         top_k=40,
         top_p=0.95,
         safety_settings=custom_safety_settings,
+        existing_ad_copy=google_ads.GoogleAd(headlines=[], descriptions=[]),
     )
     ad_copy_generator.generate_google_ad_json_batch([request])
 
@@ -894,6 +1078,7 @@ class AdCopyGeneratorTest(parameterized.TestCase):
         top_k=40,
         top_p=0.95,
         safety_settings=None,
+        existing_ad_copy=google_ads.GoogleAd(headlines=[], descriptions=[]),
     )
     ad_copy_generator.generate_google_ad_json_batch([request])
     expected_system_instruction = (
@@ -929,6 +1114,7 @@ class AdCopyGeneratorTest(parameterized.TestCase):
         top_k=40,
         top_p=0.95,
         safety_settings=None,
+        existing_ad_copy=google_ads.GoogleAd(headlines=[], descriptions=[]),
     )
     ad_copy_generator.generate_google_ad_json_batch([request])
 
@@ -945,15 +1131,16 @@ class AdCopyGeneratorTest(parameterized.TestCase):
               "headlines": {
                   "type_": "ARRAY",
                   "items": {"type_": "STRING"},
+                  "default": [],
                   "title": "Headlines",
               },
               "descriptions": {
                   "type_": "ARRAY",
                   "items": {"type_": "STRING"},
+                  "default": [],
                   "title": "Descriptions",
               },
           },
-          "required": ["headlines", "descriptions"],
           "description": (
               "Google ad copy. The google ad is defined by a list of headlines"
               " and descriptions. The headlines and descriptions are each"
@@ -994,6 +1181,7 @@ class AdCopyGeneratorTest(parameterized.TestCase):
         top_k=40,
         top_p=0.95,
         safety_settings=None,
+        existing_ad_copy=google_ads.GoogleAd(headlines=[], descriptions=[]),
     )
     ad_copy_generator.generate_google_ad_json_batch([request])
 
@@ -1024,6 +1212,7 @@ class AdCopyGeneratorTest(parameterized.TestCase):
         top_k=40,
         top_p=0.95,
         safety_settings=None,
+        existing_ad_copy=google_ads.GoogleAd(headlines=[], descriptions=[]),
     )
     response = ad_copy_generator.generate_google_ad_json_batch([request])
     self.assertEqual(
@@ -1061,6 +1250,7 @@ class AdCopyGeneratorTest(parameterized.TestCase):
         top_k=40,
         top_p=0.95,
         safety_settings=None,
+        existing_ad_copy=google_ads.GoogleAd(headlines=[], descriptions=[]),
     )
 
     request_2 = ad_copy_generator.TextGenerationRequest(
@@ -1072,6 +1262,7 @@ class AdCopyGeneratorTest(parameterized.TestCase):
         top_k=40,
         top_p=0.95,
         safety_settings=None,
+        existing_ad_copy=google_ads.GoogleAd(headlines=[], descriptions=[]),
     )
 
     response = ad_copy_generator.generate_google_ad_json_batch(
@@ -1154,9 +1345,7 @@ class AdCopyGeneratorTest(parameterized.TestCase):
     mock_requests_get.side_effect = [
         mock.DEFAULT,
         mock.DEFAULT,
-        requests.exceptions.RequestException(
-            "Simulated Error"
-        ),
+        requests.exceptions.RequestException("Simulated Error"),
     ]
 
     keyword_instructions = [

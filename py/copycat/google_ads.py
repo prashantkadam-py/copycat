@@ -87,8 +87,8 @@ class GoogleAd(pydantic.BaseModel):
   final ad copy.
   """
 
-  headlines: list[str]  # The list of headlines for the ad.
-  descriptions: list[str]  # The list of descriptions for the ad.
+  headlines: list[str] = []  # The list of headlines for the ad.
+  descriptions: list[str] = []  # The list of descriptions for the ad.
 
   def __str__(self) -> str:
     """Returns the headlines and descriptions as a string.
@@ -113,6 +113,13 @@ class GoogleAd(pydantic.BaseModel):
   def description_count(self) -> int:
     """The number of descriptions in the ad copy."""
     return len(self.descriptions)
+
+  def __add__(self, other: "GoogleAd") -> "GoogleAd":
+    """Adds two GoogleAds together."""
+    return self.__class__(
+        headlines=self.headlines + other.headlines,
+        descriptions=self.descriptions + other.descriptions,
+    )
 
 
 class GoogleAdFormat(pydantic.BaseModel):

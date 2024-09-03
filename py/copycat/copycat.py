@@ -58,10 +58,12 @@ tasked with writing new headlines and descriptions for Google Ads in {language},
 given a new set of keywords, that will maximize engagement and clicks.
 Keywords are words or phrases that are used to match ads with the terms that
 people are searching for, so the copy should be engaging for someone searching
-for those keywords. Each ad must have a list of {max_headlines} headlines 
-and a list of {max_descriptions} descriptions. Each headline must be no 
-longer than 30 characters, and each description must be no longer than 90 
-characters.
+for those keywords. For each ad you must produce a list of headlines and a list
+of descriptions, and those headlines and descriptions should be varied, while 
+making sense in any combination together - Google Ads will select different 
+combinations of headlines and descriptions to display to users. Each headline 
+must be no longer than {max_headline_length} characters, and each description 
+must be no longer than {max_description_length} characters.
 """.replace("\n", " ").replace("  ", " ")
 
 COPYCAT_PARAMS_FILE_NAME = "copycat_params.json"
@@ -392,6 +394,7 @@ class Copycat:
       self,
       raw_generated_ads: list[generative_models.Candidate],
       keywords: list[str],
+      existing_ad_copies: list[GoogleAd],
   ) -> list[CopycatResponse]:
     """Constructs a CopycatResponse from a generated GoogleAd.
 
@@ -399,11 +402,12 @@ class Copycat:
       raw_generated_ads: The unprocessed generated ads as a generation
         candidates.
       keywords: The keywords used to generate the ads.
+      existing_ad_copies: The existing ad copies if they exist, to be merged
+        with the generated ad copies.
 
     Returns:
       A CopycatResponse object.
     """
-    empty_ad_copy = GoogleAd(headlines=[], descriptions=[])
     empty_evaluation_results = ad_copy_evaluator.EvaluationResults(
         errors=[],
         warnings=[],
@@ -414,25 +418,29 @@ class Copycat:
     )
 
     responses = []
-    for keywords_i, raw_ad_i in zip(keywords, raw_generated_ads):
-      if raw_ad_i.finish_reason is not ad_copy_generator.FinishReason.STOP:
+    for keywords_i, raw_generated_ad_i, existing_ad_copy_i in zip(
+        keywords, raw_generated_ads, existing_ad_copies
+    ):
+      if raw_generated_ad_i.finish_reason is not ad_copy_generator.FinishReason.STOP:
         responses.append(
             CopycatResponse(
-                google_ad=empty_ad_copy.model_copy(),
+                google_ad=existing_ad_copy_i.model_copy(),
                 keywords=keywords_i,
                 evaluation_results=empty_evaluation_results.model_copy(
-                    update=dict(errors=[str(raw_ad_i)])
+                    update=dict(errors=[str(raw_generated_ad_i)])
                 ),
             )
         )
         continue
 
       try:
-        ad_copy = GoogleAd.model_validate_json(raw_ad_i.content.parts[0].text)
+        generated_ad_copy = GoogleAd.model_validate_json(
+            raw_generated_ad_i.content.parts[0].text
+        )
       except ValidationError as e:
         responses.append(
             CopycatResponse(
-                google_ad=empty_ad_copy,
+                google_ad=existing_ad_copy_i.model_copy(),
                 keywords=keywords_i,
                 evaluation_results=empty_evaluation_results.model_copy(
                     update=dict(errors=[str(e)])
@@ -441,6 +449,7 @@ class Copycat:
         )
         continue
 
+      ad_copy = existing_ad_copy_i.model_copy() + generated_ad_copy
       ad_copy_generator.remove_invalid_headlines_and_descriptions(
           ad_copy, self.ad_format
       )
@@ -484,9 +493,17 @@ class Copycat:
       if self.ad_copy_evaluator.is_empty(response.google_ad):
         evaluated_responses.append(response.model_copy())
       else:
+        merged_evaluation_results = evaluation_results.model_copy(
+            update=dict(
+                warnings=response.evaluation_results.warnings
+                + evaluation_results.warnings,
+                errors=response.evaluation_results.errors
+                + evaluation_results.errors,
+            )
+        )
         evaluated_responses.append(
             response.model_copy(
-                update=dict(evaluation_results=evaluation_results)
+                update=dict(evaluation_results=merged_evaluation_results)
             )
         )
     return evaluated_responses
@@ -505,12 +522,18 @@ class Copycat:
       top_p: float = 0.95,
       safety_settings: ad_copy_generator.SafetySettingsType | None = None,
       system_instruction_kwargs: dict[str, Any] | None = None,
+      existing_headlines: list[list[str]] | None = None,
+      existing_descriptions: list[list[str]] | None = None,
   ) -> list[TextGenerationRequest]:
     """Constructs a request for generating a new ad copy.
 
     This prompt consists of a system prompt, a style guide, and a number of
     in context examples. The in context examples are retrieved from the ad copy
     vectorstore.
+
+    If there are already some headlines or descriptions, then the prompt will
+    ask Copycat to extend the ad copy to the required number of headlines and
+    descriptions for the ad format.
 
     Args:
       keywords: The list of keywords to use to generate the ad copies. This
@@ -528,6 +551,10 @@ class Copycat:
       safety_settings: The safety settings for the chat model.
       system_instruction_kwargs: Additional arguments to pass to the system
         instruction.
+      existing_headlines: The existing headlines for the ad copy. If no
+        headlines then pass None.
+      existing_descriptions: The existing descriptions for the ad copy. If no
+        descriptions then pass None.
 
     Returns:
       A text generation request, containing the prompt, system instruction, and
@@ -535,21 +562,23 @@ class Copycat:
     """
     if keywords_specific_instructions is None:
       keywords_specific_instructions = [""] * len(keywords)
+    if existing_headlines is None:
+      existing_headlines = [None] * len(keywords)
+    if existing_descriptions is None:
+      existing_descriptions = [None] * len(keywords)
 
     system_instruction_kwargs = system_instruction_kwargs or {}
     default_system_instruction_kwargs = {
-        "max_headlines": self.ad_format.max_headlines,
-        "max_descriptions": self.ad_format.max_descriptions,
+        "max_headline_length": self.ad_format.max_headline_length,
+        "max_description_length": self.ad_format.max_description_length,
     }
     system_instruction_kwargs = (
         default_system_instruction_kwargs | system_instruction_kwargs
     )
-    system_instruction = (
-        ad_copy_generator.construct_system_instruction(
-            system_instruction=system_instruction,
-            style_guide=style_guide,
-            system_instruction_kwargs=system_instruction_kwargs,
-        )
+    system_instruction = ad_copy_generator.construct_system_instruction(
+        system_instruction=system_instruction,
+        style_guide=style_guide,
+        system_instruction_kwargs=system_instruction_kwargs,
     )
 
     relavent_example_ads = self.ad_copy_vectorstore.get_relevant_ads(
@@ -557,22 +586,37 @@ class Copycat:
         k=num_in_context_examples,
     )
 
+    existing_ad_copies = [
+        GoogleAd(
+            headlines=headlines_i or [],
+            descriptions=descriptions_i or [],
+        )
+        for headlines_i, descriptions_i in zip(
+            existing_headlines,
+            existing_descriptions,
+        )
+    ]
+
     prompts = [
         ad_copy_generator.construct_new_ad_copy_prompt(
             example_ads=relevant_example_ads_i,
             keywords=keywords_i,
+            ad_format=self.ad_format,
+            existing_ad_copy=existing_ad_copy_i,
             keywords_specific_instructions=keywords_specific_instructions_i,
         )
-        for keywords_i, keywords_specific_instructions_i, relevant_example_ads_i in zip(
+        for keywords_i, keywords_specific_instructions_i, relevant_example_ads_i, existing_ad_copy_i in zip(
             keywords,
             keywords_specific_instructions,
             relavent_example_ads,
+            existing_ad_copies,
         )
     ]
 
     requests = [
         TextGenerationRequest(
             keywords=keywords_i,
+            existing_ad_copy=existing_ad_copy_i,
             prompt=prompt_i,
             system_instruction=system_instruction,
             chat_model_name=ModelName(model_name),
@@ -581,7 +625,9 @@ class Copycat:
             top_p=top_p,
             safety_settings=safety_settings,
         )
-        for keywords_i, prompt_i in zip(keywords, prompts)
+        for keywords_i, prompt_i, existing_ad_copy_i in zip(
+            keywords, prompts, existing_ad_copies
+        )
     ]
 
     return requests
@@ -605,10 +651,12 @@ class Copycat:
         )
     ]
     keywords = [request.keywords for request in requests]
+    existing_ad_copies = [request.existing_ad_copy for request in requests]
 
     responses = self.construct_responses(
         generations,
         keywords,
+        existing_ad_copies,
     )
     return responses
 
@@ -628,6 +676,8 @@ class Copycat:
       allow_memorised_descriptions: bool = False,
       safety_settings: ad_copy_generator.SafetySettingsType | None = None,
       system_instruction_kwargs: dict[str, Any] | None = None,
+      existing_headlines: list[list[str]] | None = None,
+      existing_descriptions: list[list[str]] | None = None,
   ) -> list[CopycatResponse]:
     """Generates a new ad copy.
 
@@ -649,24 +699,40 @@ class Copycat:
       safety_settings: The safety settings for the chat model.
       system_instruction_kwargs: Additional arguments to pass to the system
         instruction.
+      existing_headlines: The existing headlines for the ad copy. If no
+        headlines then pass None.
+      existing_descriptions: The existing descriptions for the ad copy. If no
+        descriptions then pass None.
 
     Returns:
       A CopycatResponse object.
 
     Raises:
-      ValueError: If keywords and keywords_specific_instructions have different
-        lengths.
+      ValueError: If keywords, keywords_specific_instructions, existing
+        headlines or existing descriptions have different lengths.
       RuntimeError: If the number of responses does not match the number of
         keywords. This shouldn't happen, if it happens it indicates a bug in the
         code.
     """
     if keywords_specific_instructions is None:
       keywords_specific_instructions = [""] * len(keywords)
+    if existing_headlines is None:
+      existing_headlines = [None] * len(keywords)
+    if existing_descriptions is None:
+      existing_descriptions = [None] * len(keywords)
 
     if len(keywords) != len(keywords_specific_instructions):
       raise ValueError(
           "keywords and keywords_specific_instructions must have the same"
           " length."
+      )
+    if len(existing_headlines) != len(keywords):
+      raise ValueError(
+          "keywords and existing_headlines must have the same length."
+      )
+    if len(existing_descriptions) != len(keywords):
+      raise ValueError(
+          "keywords and existing_descriptions must have the same length."
       )
 
     requests = self.construct_text_generation_requests_for_new_ad_copy(
@@ -681,6 +747,8 @@ class Copycat:
         top_p=top_p,
         safety_settings=safety_settings,
         system_instruction_kwargs=system_instruction_kwargs,
+        existing_headlines=existing_headlines,
+        existing_descriptions=existing_descriptions,
     )
 
     responses = self._generate_new_ad_copy_from_requests(requests)

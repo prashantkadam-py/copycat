@@ -77,6 +77,7 @@ class TextGenerationRequest(pydantic.BaseModel):
   """The request to generate text."""
 
   keywords: str
+  existing_ad_copy: GoogleAd
   system_instruction: str
   prompt: list[generative_models.Content]
   chat_model_name: ModelName
@@ -92,6 +93,19 @@ class TextGenerationRequest(pydantic.BaseModel):
     lines = [
         "**Keywords:**",
         self.keywords,
+    ]
+
+    if self.existing_ad_copy.headlines:
+      lines.extend(
+          ["**Existing headlines:**", f"{self.existing_ad_copy.headlines}"]
+      )
+    if self.existing_ad_copy.descriptions:
+      lines.extend([
+          "**Existing descriptions:**",
+          f"{self.existing_ad_copy.descriptions}",
+      ])
+
+    lines.extend([
         "**Model Parameters:**",
         f"Model name: {self.chat_model_name.value}",
         f"Temperature: {self.temperature}",
@@ -100,7 +114,7 @@ class TextGenerationRequest(pydantic.BaseModel):
         f"Safety settings: {self.safety_settings}",
         "**System instruction:**",
         self.system_instruction,
-    ]
+    ])
 
     for content in self.prompt:
       lines.append(f"**{content.role.title()}:**")
@@ -570,18 +584,134 @@ class AdCopyVectorstore:
     return relevant_ads
 
 
+def _construct_instruction_for_number_of_headlines_and_descriptions(
+    existing_ad_copy: GoogleAd,
+    ad_format: GoogleAdFormat,
+) -> str:
+  """Returns the instruction with how many headlines / descriptions to generate.
+
+  If the ad already has some headlines and descriptions, then the prompt needs
+  to inclide them and explain to Copycat that it should just generate the
+  missing headlines and descriptions.
+
+  If the existing headlines and descriptions are empty then it just needs to
+  explain the number of headlines and descriptions required for the format.
+
+  If the ad is already complete, then it should raise an error.
+
+  Args:
+    existing_ad_copy: The existing headlines and descriptions.
+    ad_format: The ad format to generate.
+
+  Returns:
+    The instruction for extending the ad copy.
+
+  Raises:
+    ValueError: If the ad is already complete, meaning there is nothing to
+      generate.
+  """
+  n_existing_headlines = len(existing_ad_copy.headlines)
+  n_existing_descriptions = len(existing_ad_copy.descriptions)
+  n_required_headlines = ad_format.max_headlines - n_existing_headlines
+  n_required_descriptions = ad_format.max_descriptions - n_existing_descriptions
+
+  no_headlines = n_existing_headlines == 0
+  no_descriptions = n_existing_descriptions == 0
+  complete_headlines = n_existing_headlines >= ad_format.max_headlines
+  complete_descriptions = n_existing_descriptions >= ad_format.max_descriptions
+
+  # If the ad is already complete, then there is nothing to generate.
+  if complete_headlines and complete_descriptions:
+    raise ValueError("Trying to generate an ad that is already complete.")
+
+  # If the ad is empty, then we need to generate the required headlines and
+  # descriptions.
+  if no_headlines and no_descriptions:
+    return (
+        f"Please write {n_required_headlines} headlines and"
+        f" {n_required_descriptions} descriptions for this ad."
+    )
+
+  instructions = []
+  # First, if there are already some headlines and descriptions, explain this
+  # to Copycat.
+  if not no_headlines and not no_descriptions:
+    instructions.extend([
+        (
+            f"This ad already has {n_existing_headlines} headlines and"
+            f" {n_existing_descriptions} descriptions:\n"
+        ),
+        f"- headlines: {existing_ad_copy.headlines}",
+        f"- descriptions: {existing_ad_copy.descriptions}\n",
+    ])
+  elif not no_headlines:
+    instructions.extend([
+        f"This ad already has {n_existing_headlines} headlines.\n",
+        f"- headlines: {existing_ad_copy.headlines}\n",
+    ])
+  elif not no_descriptions:
+    instructions.extend([
+        f"This ad already has {n_existing_descriptions} descriptions.\n",
+        f"- descriptions: {existing_ad_copy.descriptions}\n",
+    ])
+
+  # If the ad still needs to generate more headlines and descriptions, make it
+  # clear how many are required.
+  if not complete_headlines and not complete_descriptions:
+    instructions.append(
+        f"Please write {n_required_headlines} more headlines and"
+        f" {n_required_descriptions} more descriptions to complete this ad."
+    )
+  elif not complete_headlines and complete_descriptions:
+    instructions.append(
+        f"Please write {n_required_headlines} more headlines to complete this"
+        " ad. You do not need to write any descriptions, as there are enough"
+        " already."
+    )
+  elif not complete_descriptions and complete_headlines:
+    instructions.append(
+        f"Please write {n_required_descriptions} more descriptions to complete"
+        " this ad. You do not need to write any headlines, as there are enough"
+        " already."
+    )
+
+  return "\n".join(instructions)
+
+
 def _construct_new_ad_copy_user_message(
     keywords: str,
+    ad_format: GoogleAdFormat,
+    existing_ad_copy: GoogleAd | None = None,
     keywords_specific_instructions: str = "",
 ) -> generative_models.Content:
-  """Constructs the json content."""
+  """Returns the user message for generating new ad copy.
+
+  Args:
+    keywords: The keywords to generate the ad copy for.
+    ad_format: The ad format to generate.
+    existing_ad_copy: The existing headlines and descriptions for this ad. The
+      prompt will ask Copycat to extend this ad copy to the required number of
+      headlines and descriptions for the ad format. If None, then the ad copy is
+      empty.
+    keywords_specific_instructions: Any additional context to use for the new
+      keywords. This could include things like information from the landing
+      page, information about specific discounts or promotions, or any other
+      relevant information.
+  """
+  if existing_ad_copy is None:
+    existing_ad_copy = GoogleAd(headlines=[], descriptions=[])
+
   content = ""
   if keywords_specific_instructions:
     content += (
         "For the next set of keywords, please consider the following additional"
         f" instructions:\n\n{keywords_specific_instructions}\n\n"
     )
-  content += f"Keywords: {keywords}"
+  content += _construct_instruction_for_number_of_headlines_and_descriptions(
+      existing_ad_copy=existing_ad_copy,
+      ad_format=ad_format,
+  )
+  content += f"\n\nKeywords: {keywords}"
 
   return generative_models.Content(
       role="user",
@@ -616,6 +746,8 @@ def construct_system_instruction(
 def construct_new_ad_copy_prompt(
     example_ads: list[ExampleAd],
     keywords: str,
+    ad_format: GoogleAdFormat,
+    existing_ad_copy: GoogleAd | None = None,
     keywords_specific_instructions: str = "",
 ) -> list[generative_models.Content]:
   """Constructs the full copycat prompt for generating new ad copy.
@@ -633,6 +765,11 @@ def construct_new_ad_copy_prompt(
   Args:
     example_ads: The list of example ads to use as in-context examples.
     keywords: The keywords to generate the ad copy for.
+    ad_format: The ad format to generate.
+    existing_ad_copy: The existing headlines and descriptions for this ad. The
+      prompt will ask Copycat to extend this ad copy to the required number of
+      headlines and descriptions for the ad format. If None, then the ad copy is
+      empty.
     keywords_specific_instructions: Any additional context to use for the new
       keywords. This could include things like information from the landing
       page, information about specific discounts or promotions, or any other
@@ -643,7 +780,17 @@ def construct_new_ad_copy_prompt(
   """
   prompt = []
   for example in reversed(example_ads):
-    prompt.append(_construct_new_ad_copy_user_message(example.keywords))
+    example_ad_format = ad_format.model_copy(
+        update={
+            "max_headlines": example.google_ad.headline_count,
+            "max_descriptions": example.google_ad.description_count,
+        }
+    )
+    prompt.append(
+        _construct_new_ad_copy_user_message(
+            example.keywords, ad_format=example_ad_format
+        )
+    )
     prompt.append(
         generative_models.Content(
             role="model",
@@ -657,7 +804,10 @@ def construct_new_ad_copy_prompt(
 
   prompt.append(
       _construct_new_ad_copy_user_message(
-          keywords, keywords_specific_instructions
+          keywords,
+          ad_format=ad_format,
+          existing_ad_copy=existing_ad_copy,
+          keywords_specific_instructions=keywords_specific_instructions,
       )
   )
   return prompt
