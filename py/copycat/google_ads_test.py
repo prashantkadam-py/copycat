@@ -75,12 +75,17 @@ class GoogleAdTest(parameterized.TestCase):
   @parameterized.parameters([
       ("No DKI is unchanged", "No DKI is unchanged"),
       (
-          "One DKI is parsed {KeyWord:my keyword}",
-          "One DKI is parsed my keyword",
-      ),
-      (
-          "Two DKIs are parsed {KeyWord:my keyword} {KeyWord:other keyword}",
-          "Two DKIs are parsed my keyword other keyword",
+          (
+              "A few different DKIs: {KeyWord:all first letters capital}"
+              " {Keyword:first letter first word capital} {keyword:all"
+              " lowercase} {KEYWord:first word all caps} {KeyWORD:last word all"
+              " caps}"
+          ),
+          (
+              "A few different DKIs: All First Letters Capital First letter"
+              " first word capital all lowercase FIRST Word All Caps Last Word"
+              " All CAPS"
+          ),
       ),
       (
           (

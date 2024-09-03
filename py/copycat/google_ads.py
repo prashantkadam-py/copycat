@@ -18,11 +18,16 @@ import re
 import pydantic
 
 
+# See https://support.google.com/google-ads/answer/6371157
 def parse_default_dynamic_keyword_insertion(text: str) -> str:
   """Replaces dynamic keyword insertion with the default keyword.
 
-  For example "Buy {KeyWord:my keyword} now" would be replaced with "Buy my
-  keyword now".
+  How the text is inserted depends on the capitalization:
+    "Buy {KeyWord:my keyword} now" -> "Buy My Keyword now"
+    "Buy {Keyword:my keyword} now" -> "Buy My keyword now"
+    "Buy {keyword:my keyword} now" -> "Buy my keyword now"
+    "Buy {KEYWord:my keyword} now" -> "Buy MY Keyword now"
+    "Buy {KeyWORD:my keyword} now" -> "Buy My KEYWORD now"
 
   Args:
     text: The text to parse.
@@ -30,8 +35,39 @@ def parse_default_dynamic_keyword_insertion(text: str) -> str:
   Returns:
     The text with the default keyword inserted.
   """
+  # Title Case
   pattern = r"\{KeyWord:([^}]+)\}"  # The regex pattern
-  return re.sub(pattern, r"\1", text)
+  text = re.sub(pattern, lambda m: m.group(1).title(), text)
+
+  # First Word Capitalized
+  pattern = r"\{Keyword:([^}]+)\}"  # The regex pattern
+  text = re.sub(pattern, lambda m: m.group(1).capitalize(), text)
+
+  # Lower Case
+  pattern = r"\{keyword:([^}]+)\}"  # The regex pattern
+  text = re.sub(pattern, lambda m: m.group(1).lower(), text)
+
+  # Caps First Word
+  pattern = r"\{KEYWord:([^}]+)\}"  # The regex pattern
+  text = re.sub(
+      pattern,
+      lambda m: m.group(1).split()[0].upper()
+      + " "
+      + " ".join(m.group(1).split()[1:]).title(),
+      text,
+  )
+
+  # Caps Last Word
+  pattern = r"\{KeyWORD:([^}]+)\}"  # The regex pattern
+  text = re.sub(
+      pattern,
+      lambda m: " ".join(m.group(1).split()[:-1]).title()
+      + " "
+      + m.group(1).split()[-1].upper(),
+      text,
+  )
+
+  return text
 
 
 class GoogleAd(pydantic.BaseModel):
