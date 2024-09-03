@@ -127,7 +127,11 @@ class Copycat:
 
   @classmethod
   def _clean_invalid_ads(
-      cls, data: pd.DataFrame, ad_format: GoogleAdFormat, on_invalid_ad: str
+      cls,
+      data: pd.DataFrame,
+      ad_format: GoogleAdFormat,
+      on_invalid_ad: str,
+      replace_special_variables_with_default: bool,
   ) -> pd.DataFrame:
     """Cleans the invalid ads from the training data.
 
@@ -137,6 +141,8 @@ class Copycat:
       ad_format: The ad format used in this vectorstore.
       on_invalid_ad: The action to take on invalid ads. Must be one of "raise",
         "skip", or "drop".
+      replace_special_variables_with_default: Whether to replace Google Ads
+        special variables with their default values.
 
     Returns:
       The training data with the invalid ads handled. If on_invalid_ad is
@@ -157,14 +163,39 @@ class Copycat:
           " 'raise', 'skip', or 'drop'."
       )
 
-    is_invalid = data.apply(
-        lambda row: not evaluator.is_valid(
-            GoogleAd(
-                headlines=row["headlines"], descriptions=row["descriptions"]
-            )
-        ),
-        axis=1,
-    )
+    if replace_special_variables_with_default:
+      data["headlines"] = data["headlines"].apply(
+          lambda headlines: list(
+              map(google_ads.parse_google_ads_special_variables, headlines)
+          )
+      )
+      data["descriptions"] = data["descriptions"].apply(
+          lambda descriptions: list(
+              map(google_ads.parse_google_ads_special_variables, descriptions)
+          )
+      )
+      is_invalid = data.apply(
+          lambda row: not evaluator.is_valid(
+              GoogleAd(
+                  headlines=row["headlines"], descriptions=row["descriptions"]
+              )
+          )
+          or evaluator.has_unfillable_google_ads_special_variables(
+              GoogleAd(
+                  headlines=row["headlines"], descriptions=row["descriptions"]
+              )
+          ),
+          axis=1,
+      )
+    else:
+      is_invalid = data.apply(
+          lambda row: not evaluator.is_valid(
+              GoogleAd(
+                  headlines=row["headlines"], descriptions=row["descriptions"]
+              )
+          ),
+          axis=1,
+      )
     n_invalid_ads = is_invalid.sum()
     frac_invalid_ads = n_invalid_ads / len(data)
     error_message = (
@@ -199,6 +230,7 @@ class Copycat:
           str | ExemplarSelectionMethod
       ) = "affinity_propagation",
       embedding_model_batch_size: int = 50,
+      replace_special_variables_with_default: bool = False,
   ) -> "Copycat":
     """Creates a Copycat model from a pandas dataframe.
 
@@ -228,6 +260,13 @@ class Copycat:
         "affinity_propagation".
       embedding_model_batch_size: The batch size to use when generating
         embeddings.
+      replace_special_variables_with_default: Whether to replace Google Ads
+        special variables with their default values. These are things like
+        Dynamic Keyword Insertion and Customizers. If you replace them with
+        their default values then Copycat won't try to learn them, and it will
+        just generate generic ads without DKI or Customizers. If you keep them
+        then it might try to generate them, but this can sometimes not work
+        well.
 
     Returns:
       A Copycat model.
@@ -235,6 +274,8 @@ class Copycat:
     Raises:
       ValueError: If the training data does not contain the required columns.
     """
+    training_data = training_data.copy()
+
     if isinstance(ad_format, str):
       ad_format = google_ads.get_google_ad_format(ad_format)
 
@@ -247,7 +288,10 @@ class Copycat:
       )
 
     training_data = cls._clean_invalid_ads(
-        training_data, ad_format, on_invalid_ad
+        training_data,
+        ad_format,
+        on_invalid_ad,
+        replace_special_variables_with_default,
     )
 
     ad_copy_vectorstore = (

@@ -216,6 +216,104 @@ class CopycatTest(parameterized.TestCase):
     ]
     self.assertCountEqual(vectorstore_results, expected_vectorstore_results)
 
+  def test_create_from_pandas_replaces_special_variables_in_training_data_if_set(
+      self,
+  ):
+    training_data = pd.DataFrame({
+        "headlines": [
+            ["headline 1", "headline {CUSTOMIZER.product:my product}"]
+        ],
+        "descriptions": [
+            ["description 1", "description {CUSTOMIZER.product:my product}"]
+        ],
+        "keywords": ["keyword 1, keyword 2"],
+    })
+    copycat_instance = copycat.Copycat.create_from_pandas(
+        training_data=training_data,
+        embedding_model_name="text-embedding-004",
+        ad_format="text_ad",
+        vectorstore_exemplar_selection_method="random",
+        replace_special_variables_with_default=True,
+    )
+
+    # Will return all the entries because we only had 3 rows in the training
+    # data.
+    vectorstore_results = copycat_instance.ad_copy_vectorstore.get_relevant_ads(
+        ["query"], k=3
+    )[0]
+
+    expected_vectorstore_results = [
+        copycat.ad_copy_generator.ExampleAd(
+            keywords="keyword 1, keyword 2",
+            google_ad=google_ads.GoogleAd(
+                headlines=["headline 1", "headline my product"],
+                descriptions=["description 1", "description my product"],
+            ),
+        ),
+    ]
+    self.assertCountEqual(vectorstore_results, expected_vectorstore_results)
+
+  def test_create_from_pandas_considers_unfillable_special_variables_as_invalid_ads_if_replacing_them(
+      self,
+  ):
+    training_data = pd.DataFrame({
+        "headlines": [["headline 1", "headline {CUSTOMIZER.product}"]],
+        "descriptions": [["description 1", "description {CUSTOMIZER.product}"]],
+        "keywords": ["keyword 1, keyword 2"],
+    })
+    with self.assertRaisesWithLiteralMatch(
+        ValueError, "1 (100.00%) invalid ads found in the training data."
+    ):
+      copycat.Copycat.create_from_pandas(
+          training_data=training_data,
+          embedding_model_name="text-embedding-004",
+          ad_format="text_ad",
+          vectorstore_exemplar_selection_method="random",
+          replace_special_variables_with_default=True,
+          on_invalid_ad="raise",
+      )
+
+  def test_create_from_pandas_ignores_special_variables_in_training_data_if_not_replacing_them(
+      self,
+  ):
+    training_data = pd.DataFrame({
+        "headlines": [
+            ["headline 1", "headline {CUSTOMIZER.product:my product}"]
+        ],
+        "descriptions": [["description 1", "description {CUSTOMIZER.product}"]],
+        "keywords": ["keyword 1, keyword 2"],
+    })
+    copycat_instance = copycat.Copycat.create_from_pandas(
+        training_data=training_data,
+        embedding_model_name="text-embedding-004",
+        ad_format="text_ad",
+        vectorstore_exemplar_selection_method="random",
+        replace_special_variables_with_default=False,
+    )
+
+    # Will return all the entries because we only had 3 rows in the training
+    # data.
+    vectorstore_results = copycat_instance.ad_copy_vectorstore.get_relevant_ads(
+        ["query"], k=3
+    )[0]
+
+    expected_vectorstore_results = [
+        copycat.ad_copy_generator.ExampleAd(
+            keywords="keyword 1, keyword 2",
+            google_ad=google_ads.GoogleAd(
+                headlines=[
+                    "headline 1",
+                    "headline {CUSTOMIZER.product:my product}",
+                ],
+                descriptions=[
+                    "description 1",
+                    "description {CUSTOMIZER.product}",
+                ],
+            ),
+        ),
+    ]
+    self.assertCountEqual(vectorstore_results, expected_vectorstore_results)
+
   def test_create_from_pandas_on_invalid_ad_is_skip_ignores_invalid_ads(self):
     training_data = pd.DataFrame.from_records([
         {
