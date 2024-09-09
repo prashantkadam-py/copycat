@@ -19,6 +19,7 @@ Contains the code to generate copycat ad copies.
 
 import dataclasses
 import json
+import logging
 from typing import Any
 import warnings
 
@@ -50,6 +51,10 @@ ALL_SAFETY_SETTINGS_OFF = {
     harm_category: HarmBlockThreshold.BLOCK_NONE
     for harm_category in HarmCategory
 }
+
+
+LOGGER = logging.getLogger(__name__)
+LOGGER.setLevel(logging.INFO)
 
 
 DEFAULT_SYSTEM_INSTRUCTION = """\
@@ -102,6 +107,7 @@ class CopycatResponse(pydantic.BaseModel):
 
   def raise_if_not_success(self) -> None:
     if not self.success:
+      LOGGER.error("CopycatResponse is not successful: %s", self.error_message)
       raise CopycatResponseError(self.error_message)
 
 
@@ -160,8 +166,13 @@ class Copycat:
         on_invalid_ad is "raise".
     """
     evaluator = ad_copy_evaluator.AdCopyEvaluator(ad_format)
+    LOGGER.info(
+        "Cleaning invalid ads from the training data. Will %s invalid ads.",
+        on_invalid_ad,
+    )
 
     if on_invalid_ad not in ["raise", "skip", "drop"]:
+      LOGGER.error("Invalid value for on_invalid_ad: %s", on_invalid_ad)
       raise ValueError(
           f"Invalid value for on_invalid_ad: {on_invalid_ad}. Must be one of"
           " 'raise', 'skip', or 'drop'."
@@ -209,12 +220,19 @@ class Copycat:
 
     if n_invalid_ads > 0:
       if on_invalid_ad == "raise":
+        LOGGER.error(error_message)
         raise ValueError(error_message)
       elif on_invalid_ad == "skip":
+        LOGGER.warning("%s Keeping them in the training data.", error_message)
         warnings.warn(error_message + " Keeping them in the training data.")
       elif on_invalid_ad == "drop":
+        LOGGER.warning(
+            "%s Dropping them from the training data.", error_message
+        )
         warnings.warn(error_message + " Dropping them from the training data.")
         data = data[~is_invalid]
+    else:
+      LOGGER.info("No invalid ads found in the training data.")
 
     return data
 
@@ -286,6 +304,11 @@ class Copycat:
     required_columns = {"headlines", "descriptions", "keywords"}
     missing_columns = required_columns - set(training_data.columns)
     if missing_columns:
+      LOGGER.error(
+          "Training data must contain the columns %s. Missing columns: %s.",
+          sorted(required_columns),
+          sorted(missing_columns),
+      )
       raise ValueError(
           f"Training data must contain the columns {sorted(required_columns)}."
           f" Missing columns: {sorted(missing_columns)}."
@@ -345,6 +368,7 @@ class Copycat:
     }
     missing_keys = required_keys - set(params.keys())
     if missing_keys:
+      LOGGER.error("Missing required keys: %s", missing_keys)
       raise KeyError(f"Missing required keys: {missing_keys}")
 
     return cls(
@@ -421,7 +445,10 @@ class Copycat:
     for keywords_i, raw_generated_ad_i, existing_ad_copy_i in zip(
         keywords, raw_generated_ads, existing_ad_copies
     ):
-      if raw_generated_ad_i.finish_reason is not ad_copy_generator.FinishReason.STOP:
+      if (
+          raw_generated_ad_i.finish_reason
+          is not ad_copy_generator.FinishReason.STOP
+      ):
         responses.append(
             CopycatResponse(
                 google_ad=existing_ad_copy_i.model_copy(),
@@ -430,6 +457,10 @@ class Copycat:
                     update=dict(errors=[str(raw_generated_ad_i)])
                 ),
             )
+        )
+        LOGGER.error(
+            "Generated ad did not finish. Complete response: %s.",
+            raw_generated_ad_i,
         )
         continue
 
@@ -446,6 +477,11 @@ class Copycat:
                     update=dict(errors=[str(e)])
                 ),
             )
+        )
+        LOGGER.error(
+            "Generated ad was not matching the expected json format."
+            " Error: %s.",
+            e,
         )
         continue
 
@@ -722,15 +758,23 @@ class Copycat:
       existing_descriptions = [None] * len(keywords)
 
     if len(keywords) != len(keywords_specific_instructions):
+      LOGGER.error(
+          "keywords and keywords_specific_instructions must have the same"
+          " length."
+      )
       raise ValueError(
           "keywords and keywords_specific_instructions must have the same"
           " length."
       )
     if len(existing_headlines) != len(keywords):
+      LOGGER.error("keywords and existing_headlines must have the same length.")
       raise ValueError(
           "keywords and existing_headlines must have the same length."
       )
     if len(existing_descriptions) != len(keywords):
+      LOGGER.error(
+          "keywords and existing_descriptions must have the same length."
+      )
       raise ValueError(
           "keywords and existing_descriptions must have the same length."
       )
@@ -760,6 +804,9 @@ class Copycat:
     )
 
     if len(evaluated_responses) != len(keywords):
+      LOGGER.error(
+          "The number of responses does not match the number of keywords."
+      )
       raise RuntimeError(
           "The number of responses does not match the number of keywords."
       )

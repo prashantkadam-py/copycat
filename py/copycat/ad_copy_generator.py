@@ -18,6 +18,7 @@ import dataclasses
 import enum
 import functools
 import json
+import logging
 import re
 from typing import Any, AsyncIterable, Coroutine, Hashable, TypeVar
 
@@ -30,9 +31,23 @@ import pydantic
 import requests
 from sklearn import cluster
 from sklearn import neighbors
-import tqdm.autonotebook as tqdm
+import tqdm
 
 from copycat import google_ads
+
+
+LOGGER = logging.getLogger(__name__)
+LOGGER.setLevel(logging.INFO)
+
+
+class TqdmLogger:
+  """File-like class redirecting tqdm progress bar to LOGGER."""
+
+  def write(self, msg: str) -> None:
+    LOGGER.info(msg.lstrip("\r"))
+
+  def flush(self) -> None:
+    pass
 
 
 AsyncGenerationResponse = Coroutine[
@@ -200,13 +215,25 @@ class AdCopyVectorstore:
         embedding_model_name.value
     )
     n_batches = np.ceil(len(texts) / batch_size)
+    LOGGER.info(
+        "Using embedding model: %s, dimensionality: %d, task type: %s",
+        embedding_model_name.value,
+        dimensionality,
+        task_type,
+    )
+    LOGGER.info(
+        "Generating %d embeddings in %d batches.", len(texts), n_batches
+    )
 
     embeddings = []
 
     texts_batch_iterator = np.array_split(texts, n_batches)
     if progress_bar:
       texts_batch_iterator = tqdm.tqdm(
-          texts_batch_iterator, desc="Generating embeddings"
+          texts_batch_iterator,
+          desc="Generating embeddings",
+          file=TqdmLogger(),
+          mininterval=5,
       )
 
     for texts_batch in texts_batch_iterator:
@@ -219,6 +246,7 @@ class AdCopyVectorstore:
       )
       embeddings.extend([emb.values for emb in embedding_outputs])
 
+    LOGGER.info("Embeddings generated.")
     return embeddings
 
   def embed_documents(self, texts: list[str]) -> list[list[float]]:
@@ -253,6 +281,7 @@ class AdCopyVectorstore:
       max_exemplars: int,
   ) -> pd.DataFrame:
     """Uses Affinity Propagation to find exemplar ads."""
+    LOGGER.info("Getting exemplars with Affinity Propagation.")
     embeddings = np.asarray(data[embeddings_column].values.tolist())
 
     clusterer = cluster.AffinityPropagation(preference=affinity_preference)
@@ -264,8 +293,15 @@ class AdCopyVectorstore:
     )
 
     if len(exemplars) > max_exemplars:
+      LOGGER.info(
+          "Affinity Propagation returned too many exemplars (%d). Sampling to"
+          " get %d.",
+          len(exemplars),
+          max_exemplars,
+      )
       exemplars = exemplars.sample(max_exemplars)
 
+    LOGGER.info("Got %d exemplars with Affinity Propagation.", len(exemplars))
     return exemplars
 
   @classmethod
@@ -283,6 +319,9 @@ class AdCopyVectorstore:
     Returns:
       The deduplicated training data.
     """
+    n_starting_rows = len(data)
+    LOGGER.info("Deduplicating ads (starting with %d rows).", n_starting_rows)
+
     data = data.copy()
     data["headlines"] = data["headlines"].apply(tuple)
     data["descriptions"] = data["descriptions"].apply(tuple)
@@ -293,6 +332,12 @@ class AdCopyVectorstore:
     )
     data["headlines"] = data["headlines"].apply(list)
     data["descriptions"] = data["descriptions"].apply(list)
+
+    n_deduped_rows = len(data)
+    LOGGER.info(
+        "Deduplication removed %d rows.", n_starting_rows - n_deduped_rows
+    )
+
     return data
 
   @classmethod
@@ -362,10 +407,17 @@ class AdCopyVectorstore:
 
     Returns:
       An instance of the AdCopyVectorstore containing the exemplar ads.
+
+    Raises:
+      ValueError: If the exemplar selection method is not supported.
     """
     embedding_model_name = EmbeddingModelName(embedding_model_name)
     exemplar_selection_method = ExemplarSelectionMethod(
         exemplar_selection_method
+    )
+    LOGGER.info(
+        "Creating AdCopyVectorstore from %d rows of training data.",
+        len(training_data),
     )
 
     data = (
@@ -375,9 +427,14 @@ class AdCopyVectorstore:
     )
 
     if len(data) > max_initial_ads:
+      LOGGER.info("Sampling %d ads from %d ads.", max_initial_ads, len(data))
       data = data.sample(max_initial_ads)
 
     data["ad_markdown"] = data.apply(lambda x: str(GoogleAd(**x)), axis=1)
+    LOGGER.info(
+        "Finding exemplar ads with method = %s.",
+        exemplar_selection_method.value,
+    )
     if (
         exemplar_selection_method
         is ExemplarSelectionMethod.AFFINITY_PROPAGATION
@@ -413,13 +470,18 @@ class AdCopyVectorstore:
       )
 
     else:
-      raise RuntimeError(
+      LOGGER.error(
+          "Unsupported exemplar selection method: %s",
+          exemplar_selection_method.value,
+      )
+      raise ValueError(
           f"Unsupported exemplar selection method: {exemplar_selection_method}"
       )
 
-    print(
-        f"Reduced {len(training_data)} total ads to"
-        f" {len(ad_exemplars)} exemplar ads."
+    LOGGER.info(
+        "Reduced %d total ads to %d exemplar ads.",
+        len(training_data),
+        len(ad_exemplars),
     )
 
     return cls(
@@ -458,6 +520,7 @@ class AdCopyVectorstore:
     }
     missing_keys = required_keys - set(params.keys())
     if missing_keys:
+      LOGGER.error("Missing required keys: %s", missing_keys)
       raise KeyError(f"Missing required keys: {missing_keys}")
 
     params = params.copy()
@@ -622,6 +685,7 @@ def _construct_instruction_for_number_of_headlines_and_descriptions(
 
   # If the ad is already complete, then there is nothing to generate.
   if complete_headlines and complete_descriptions:
+    LOGGER.error("Trying to generate an ad that is already complete.")
     raise ValueError("Trying to generate an ad that is already complete.")
 
   # If the ad is empty, then we need to generate the required headlines and
@@ -957,6 +1021,10 @@ def generate_google_ad_json_batch(
   )
   for output in outputs:
     if not isinstance(output, generative_models.GenerationResponse):
+      LOGGER.error(
+          "One of the responses is not a GenerationResponse. Instead got: %s",
+          output,
+      )
       raise RuntimeError(
           "One of the responses is not a GenerationResponse. Instead got:"
           f" {output}"
