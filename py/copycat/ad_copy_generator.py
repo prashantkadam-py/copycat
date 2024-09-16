@@ -1015,7 +1015,12 @@ def generate_google_ad_json_batch(
     RuntimeError: If one of the responses is not a valid json representation of
     a GoogleAd. This shouldn't happen unless the gemini api changes.
   """
-  loop = asyncio.get_event_loop()
+  try:
+    loop = asyncio.get_running_loop()
+  except RuntimeError:
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
   outputs = loop.run_until_complete(
       asyncio.gather(*list(map(async_generate_google_ad_json, requests)))
   )
