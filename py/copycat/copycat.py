@@ -52,6 +52,10 @@ ALL_SAFETY_SETTINGS_OFF = {
     for harm_category in HarmCategory
 }
 
+ALL_SAFETY_SETTINGS_ONLY_HIGH = {
+    harm_category: HarmBlockThreshold.BLOCK_ONLY_HIGH
+    for harm_category in HarmCategory
+}
 
 LOGGER = logging.getLogger(__name__)
 LOGGER.setLevel(logging.INFO)
