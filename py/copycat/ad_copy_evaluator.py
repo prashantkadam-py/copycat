@@ -41,7 +41,9 @@ def _normalized_cosine_similarity(
     embedding_1: list[float], embedding_2: list[float]
 ) -> float:
   """Calculate the cosine similarity normalized to a value between 0 and 1."""
-  similarity = pairwise.cosine_similarity([embedding_1], [embedding_2])[0][0]
+  similarity = float(
+      pairwise.cosine_similarity([embedding_1], [embedding_2])[0][0]
+  )
   return min(max((1.0 + similarity) / 2.0, 0.0), 1.0)
 
 

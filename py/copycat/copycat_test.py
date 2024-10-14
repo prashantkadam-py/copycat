@@ -650,7 +650,7 @@ class CopycatTest(parameterized.TestCase):
           testcase_name="with existing ad copy",
           existing_headlines=["existing headline"],
           existing_descriptions=["existing description"],
-          expected_style_similarity=0.5590658228752542,
+          expected_style_similarity=0.5590658228752543,
           expected_keyword_similarity=0.5056089825975687,
       ),
       dict(
@@ -658,7 +658,7 @@ class CopycatTest(parameterized.TestCase):
           existing_headlines=None,
           existing_descriptions=None,
           expected_style_similarity=0.5338446522650305,
-          expected_keyword_similarity=0.47668610866645195,
+          expected_keyword_similarity=0.4766861086664519,
       ),
   )
   @testing_utils.PatchGenerativeModel(
