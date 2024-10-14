@@ -32,6 +32,7 @@ EvaluationResults = copycat.EvaluationResults
 HarmCategory = copycat.generative_models.HarmCategory
 HarmBlockThreshold = copycat.generative_models.HarmBlockThreshold
 ALL_SAFETY_SETTINGS_OFF = copycat.ALL_SAFETY_SETTINGS_OFF
+ALL_SAFETY_SETTINGS_ONLY_HIGH = copycat.ALL_SAFETY_SETTINGS_ONLY_HIGH
 
 
 __version__ = "0.0.1"
