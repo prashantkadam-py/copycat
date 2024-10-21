@@ -58,6 +58,9 @@ INSTALL_REQUIREMENTS = _parse_requirements(
 TEST_REQUIREMENTS = _parse_requirements(
     os.path.join(CURRENT_DIR, "requirements_tests.txt")
 )
+UI_REQUIREMENTS = _parse_requirements(
+    os.path.join(CURRENT_DIR, "requirements_ui.txt")
+)
 
 setuptools.setup(
     name="copycat",
@@ -74,6 +77,7 @@ setuptools.setup(
     packages=setuptools.find_packages(),
     install_requires=INSTALL_REQUIREMENTS,
     tests_require=TEST_REQUIREMENTS,
+    extra_require={"ui": UI_REQUIREMENTS},
     url="https://github.com/google-marketing-solutions/copycat",
     classifiers=[
         "Development Status :: 3 - Alpha",
