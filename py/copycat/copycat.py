@@ -31,6 +31,7 @@ from copycat import ad_copy_evaluator
 from copycat import ad_copy_generator
 from copycat import google_ads
 from copycat import style_guide
+from copycat import keyword_organiser
 
 GoogleAd = google_ads.GoogleAd
 GoogleAdFormat = google_ads.GoogleAdFormat
@@ -41,6 +42,7 @@ TextGenerationRequest = ad_copy_generator.TextGenerationRequest
 ExemplarSelectionMethod = ad_copy_generator.ExemplarSelectionMethod
 EvaluationResults = ad_copy_evaluator.EvaluationResults
 StyleGuideGenerator = style_guide.StyleGuideGenerator
+BirchAgglomerativeKeywordClusterer = keyword_organiser.BirchAgglomerativeKeywordClusterer
 
 # Below are not used in this file, they are included for the user to easily
 # adjust the safety settings in copycat without having to import

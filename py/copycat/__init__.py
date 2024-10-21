@@ -28,6 +28,7 @@ EmbeddingModelName = copycat.EmbeddingModelName
 TextGenerationRequest = copycat.TextGenerationRequest
 ExemplarSelectionMethod = copycat.ExemplarSelectionMethod
 EvaluationResults = copycat.EvaluationResults
+BirchAgglomerativeKeywordClusterer = copycat.BirchAgglomerativeKeywordClusterer
 
 HarmCategory = copycat.generative_models.HarmCategory
 HarmBlockThreshold = copycat.generative_models.HarmBlockThreshold
