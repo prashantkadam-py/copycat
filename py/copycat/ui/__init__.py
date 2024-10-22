@@ -13,7 +13,7 @@
 # limitations under the License.
 
 try:
-  from google3.third_party.professional_services.solutions.copycat.ui import main
+  from copycat.ui import main
 except ImportError:
   # The UI may not be available if the user has not installed Mesop. In this
   # case, we will just ignore the import error.
