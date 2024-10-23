@@ -61,6 +61,9 @@ TEST_REQUIREMENTS = _parse_requirements(
 UI_REQUIREMENTS = _parse_requirements(
     os.path.join(CURRENT_DIR, "requirements_ui.txt")
 )
+GOOGLE_SHEETS_REQUIREMENTS = _parse_requirements(
+    os.path.join(CURRENT_DIR, "requirements_google_sheets.txt")
+)
 
 setuptools.setup(
     name="copycat",
@@ -77,7 +80,10 @@ setuptools.setup(
     packages=setuptools.find_packages(),
     install_requires=INSTALL_REQUIREMENTS,
     tests_require=TEST_REQUIREMENTS,
-    extra_require={"ui": UI_REQUIREMENTS},
+    extras_require={
+        "ui": UI_REQUIREMENTS,
+        "google_sheets": GOOGLE_SHEETS_REQUIREMENTS,
+    },
     url="https://github.com/google-marketing-solutions/copycat",
     classifiers=[
         "Development Status :: 3 - Alpha",
