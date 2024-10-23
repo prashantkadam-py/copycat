@@ -1141,6 +1141,7 @@ class AdCopyGeneratorTest(parameterized.TestCase):
                   "title": "Descriptions",
               },
           },
+          "property_ordering": ["headlines", "descriptions"],
           "description": (
               "Google ad copy. The google ad is defined by a list of headlines"
               " and descriptions. The headlines and descriptions are each"
