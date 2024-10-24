@@ -14,6 +14,8 @@
 
 """Utility functions for loading and saving data to Google Sheets."""
 
+import logging
+import time
 from typing import Any
 import google.auth.credentials
 import gspread
@@ -326,3 +328,63 @@ class GoogleSheet:
     """Deletes the worksheet with the given title."""
     worksheet = self.spreadsheet.worksheet(worksheet_title)
     self.spreadsheet.del_worksheet(worksheet)
+
+
+class GoogleSheetsLogSender:
+
+  HEADINGS = ["UTC Timestamp", "Log Level", "Logger Name", "Message"]
+
+  def __init__(
+      self,
+      sheet_url: str,
+      log_worksheet_name: str = "Logs",
+  ):
+    self.client = get_gspread_client()
+    self.spreadsheet = self.client.open_by_url(sheet_url)
+
+    existing_worksheets = [
+        sheet.title for sheet in self.spreadsheet.worksheets()
+    ]
+    if log_worksheet_name not in existing_worksheets:
+      self.log_worksheet = self.spreadsheet.add_worksheet(
+          title=log_worksheet_name, rows=2, cols=4
+      )
+      self.log_worksheet.update(range_name="A1:D1", values=[self.HEADINGS])
+      self.log_worksheet.format(ranges=["A1:D1"], format=HEADING_FORMAT)
+    else:
+      self.log_worksheet = self.spreadsheet.worksheet(log_worksheet_name)
+
+    actual_headings = self.log_worksheet.row_values(1)
+    if actual_headings != self.HEADINGS:
+      raise ValueError(
+          "The first row of the log worksheet must be the expected headings:"
+          f" {self.HEADINGS}, but got {actual_headings}."
+      )
+
+  def write_log(self, msg: logging.LogRecord) -> None:
+    self.log_worksheet.insert_row(
+        [
+            time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(msg.created)),
+            msg.levelname,
+            msg.name,
+            msg.getMessage(),
+        ],
+        index=2,
+    )
+
+
+class GoogleSheetsHandler(logging.Handler):
+
+  def __init__(
+      self,
+      sheet_url: str,
+      log_worksheet_name: str = "Logs",
+  ) -> None:
+    self.sender = GoogleSheetsLogSender(
+        sheet_url=sheet_url,
+        log_worksheet_name=log_worksheet_name,
+    )
+    super().__init__()
+
+  def emit(self, record: logging.LogRecord) -> None:
+    self.sender.write_log(record)

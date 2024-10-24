@@ -220,6 +220,31 @@ class MockWorksheet:
     for batch in batches:
       self.update(batch["values"], range_name=batch["range"])
 
+  def insert_row(self, values: list[Any], index: int) -> None:
+    """Inserts a row at the given index.
+
+    Args:
+      values: The values to insert into the row.
+      index: The index to insert the row at. The index starts at 1, so the first
+        row is row 1.
+    """
+    if len(values) > self.col_count:
+      self.add_cols(len(values) - self.col_count)
+    if len(values) < self.col_count:
+      values.extend(_empty_data(1, self.col_count - len(values))[0])
+
+    self._data.insert(index - 1, values)
+    self._formatting.insert(index, _empty_formatting(1, self.col_count)[0])
+
+  def row_values(self, index: int) -> list[Any]:
+    """Returns the values in the given row.
+
+    Args:
+      index: The index of the row to return. The index starts at 1, so the first
+        row is row 1.
+    """
+    return self._data[index - 1]
+
 
 class MockSpreadsheet:
   """A mock gspread spreadsheet for testing.

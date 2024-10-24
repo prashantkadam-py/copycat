@@ -400,6 +400,75 @@ class PatchEmbeddingsModelTest(parameterized.TestCase):
     self.assertListEqual(worksheet._data, [[""] * 4] * 4)
     self.assertListEqual(worksheet._formatting, [[{}] * 4] * 4)
 
+  def test_insert_row_inserts_a_row_at_the_given_index(self):
+    client = gspread.authorize(None)
+    spreadsheet = client.create("test_spreadsheet")
+    worksheet = spreadsheet.add_worksheet("Sheet2", rows=2, cols=4)
+    worksheet.update([
+        ["1", "2", "3", "4"],
+        ["5", "6", "7", "8"],
+    ])
+
+    worksheet.insert_row(["9", "10", "11", "12"], index=2)
+
+    self.assertListEqual(
+        worksheet._data,
+        [
+            ["1", "2", "3", "4"],
+            ["9", "10", "11", "12"],
+            ["5", "6", "7", "8"],
+        ],
+    )
+    self.assertListEqual(
+        worksheet._formatting,
+        [
+            [{}] * 4,
+            [{}] * 4,
+            [{}] * 4,
+        ],
+    )
+
+  def test_insert_row_adds_columns_if_needed(self):
+    client = gspread.authorize(None)
+    spreadsheet = client.create("test_spreadsheet")
+    worksheet = spreadsheet.add_worksheet("Sheet2", rows=2, cols=4)
+    worksheet.update([
+        ["1", "2", "3", "4"],
+        ["5", "6", "7", "8"],
+    ])
+
+    worksheet.insert_row(["9", "10", "11", "12", "13"], index=2)
+
+    self.assertEqual(worksheet.col_count, 5)
+    self.assertListEqual(
+        worksheet._data,
+        [
+            ["1", "2", "3", "4", ""],
+            ["9", "10", "11", "12", "13"],
+            ["5", "6", "7", "8", ""],
+        ],
+    )
+    self.assertListEqual(
+        worksheet._formatting,
+        [
+            [{}] * 5,
+            [{}] * 5,
+            [{}] * 5,
+        ],
+    )
+
+  def test_row_values_returns_the_values_in_the_given_row(self):
+    client = gspread.authorize(None)
+    spreadsheet = client.create("test_spreadsheet")
+    worksheet = spreadsheet.add_worksheet("Sheet2", rows=2, cols=4)
+    worksheet.update([
+        ["1", "2", "3", "4"],
+        ["5", "6", "7", "8"],
+    ])
+
+    self.assertListEqual(worksheet.row_values(1), ["1", "2", "3", "4"])
+    self.assertListEqual(worksheet.row_values(2), ["5", "6", "7", "8"])
+
 
 if __name__ == "__main__":
   absltest.main()

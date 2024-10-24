@@ -14,6 +14,9 @@
 
 """Tests for the sheets module."""
 
+import datetime as dt
+import logging
+
 from absl.testing import absltest
 from absl.testing import parameterized
 import gspread
@@ -246,6 +249,105 @@ class GoogleSheetTest(parameterized.TestCase):
     self.assertIn("Sheet2", google_sheet)
     google_sheet.delete_worksheet("Sheet2")
     self.assertNotIn("Sheet2", google_sheet)
+
+
+class GoogleSheetLoggerTest(parameterized.TestCase):
+
+  def setUp(self):
+    super().setUp()
+    self.gspread_patcher = mock_gspread.PatchGspread()
+    self.gspread_patcher.start()
+
+    dummy_credentials = "dummy_credentials"
+    sheets.set_google_auth_credentials(dummy_credentials)
+    self.client = gspread.authorize(dummy_credentials)
+
+  def tearDown(self):
+    super().tearDown()
+    self.gspread_patcher.stop()
+
+  def test_can_write_logs_if_logs_tab_does_not_exist(self):
+    spreadsheet = self.client.create("test_spreadsheet")
+
+    logger = logging.getLogger("test_logger")
+    handler = sheets.GoogleSheetsHandler(spreadsheet.url)
+    handler.setLevel(logging.INFO)
+    logger.handlers = []
+    logger.addHandler(handler)
+    logger.setLevel(logging.INFO)
+
+    logger.info("test info message")
+    logger.warning("test warning message")
+    logger.error("test error message")
+    logger.critical("test critical message")
+
+    worksheet = spreadsheet.worksheet("Logs")
+    data_without_timestamp_col = [row[1:] for row in worksheet._data]
+    timestamp_col = [row[0] for row in worksheet._data]
+
+    self.assertListEqual(
+        data_without_timestamp_col,
+        [
+            ["Log Level", "Logger Name", "Message"],
+            ["CRITICAL", "test_logger", "test critical message"],
+            ["ERROR", "test_logger", "test error message"],
+            ["WARNING", "test_logger", "test warning message"],
+            ["INFO", "test_logger", "test info message"],
+            ["", "", ""],
+        ],
+    )
+    self.assertEqual(timestamp_col[0], "UTC Timestamp")
+    for timestamp in timestamp_col[1:-1]:
+      dt.datetime.strptime(
+          timestamp, "%Y-%m-%d %H:%M:%S"
+      )  # Will raise if invalid format
+
+  def test_adds_logs_if_logs_tab_exists(self):
+    spreadsheet = self.client.create("test_spreadsheet")
+    spreadsheet.add_worksheet("Logs", rows=3, cols=4)
+    spreadsheet.worksheet("Logs").update(
+        values=[
+            sheets.GoogleSheetsLogSender.HEADINGS,
+            [
+                "2024-01-01 00:00:00",
+                "INFO",
+                "test_logger",
+                "existing test info message",
+            ],
+        ],
+    )
+
+    logger = logging.getLogger("test_logger")
+    handler = sheets.GoogleSheetsHandler(spreadsheet.url)
+    handler.setLevel(logging.INFO)
+    logger.handlers = []
+    logger.addHandler(handler)
+    logger.setLevel(logging.INFO)
+
+    logger.info("new info message")
+
+    worksheet = spreadsheet.worksheet("Logs")
+    data_without_timestamp_col = [row[1:] for row in worksheet._data]
+
+    self.assertListEqual(
+        data_without_timestamp_col,
+        [
+            ["Log Level", "Logger Name", "Message"],
+            ["INFO", "test_logger", "new info message"],
+            ["INFO", "test_logger", "existing test info message"],
+            ["", "", ""],
+        ],
+    )
+
+  def test_raises_error_if_logs_tab_has_wrong_headings(self):
+    spreadsheet = self.client.create("test_spreadsheet")
+    spreadsheet.add_worksheet("Logs", rows=2, cols=4)
+    spreadsheet.worksheet("Logs").update(
+        values=[["Wrong", "Headings"]],
+    )
+
+    with self.assertRaises(ValueError):
+      sheets.GoogleSheetsLogSender(spreadsheet.url)
 
 
 if __name__ == "__main__":
