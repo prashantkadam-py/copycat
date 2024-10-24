@@ -17,11 +17,14 @@
 import dataclasses
 
 import mesop as me
+import numpy as np
+import pandas as pd
 
+from copycat.data import sheets
 from copycat.ui import states
 
 
-def update_copycat_parameter(event: me.InputEvent):
+def update_copycat_parameter(event: me.InputEvent) -> None:
   """Updates a parameter in the CopycatParamsState.
 
   Args:
@@ -37,3 +40,183 @@ def update_copycat_parameter(event: me.InputEvent):
       setattr(params, event.key, field.type(event.value))
       return
   raise ValueError(f"Field {event.key} does not exist in CopycatParamsState.")
+
+
+def update_app_state_parameter(event: me.InputEvent) -> None:
+  """Updates a parameter in the AppState.
+
+  Args:
+    event: The input event to handle. This can be any event where the key is
+      set.
+
+  Raises:
+    ValueError: If the key is not a field in AppState.
+  """
+  state = me.state(states.AppState)
+  for field in dataclasses.fields(state):
+    if field.name == event.key:
+      setattr(state, event.key, field.type(event.value))
+      return
+  raise ValueError(f"Field {event.key} does not exist in AppState.")
+
+
+def close_starting_dialog(event: me.ClickEvent) -> None:
+  """Closes the starting dialog.
+
+  This clears the new Google Sheet URL and name, and sets the
+  show_starting_dialog state to False.
+
+  Args:
+    event: The click event to handle.
+  """
+  state = me.state(states.AppState)
+  state.new_google_sheet_url = ""
+  state.new_google_sheet_name = ""
+  state.show_starting_dialog = False
+
+
+def reset_state(
+    state: type[states.AppState] | type[states.CopycatParamsState],
+) -> None:
+  """Resets a state to its default values.
+
+  Args:
+    state: The state to reset.
+  """
+  params = me.state(state)
+
+  for field in dataclasses.fields(params):
+    if field.default is not dataclasses.MISSING:
+      setattr(params, field.name, field.default)
+    elif field.default_factory is not dataclasses.MISSING:
+      setattr(params, field.name, field.default_factory())
+    else:
+      setattr(params, field.name, field.type())
+
+
+def save_params_to_google_sheet(event: me.ClickEvent) -> None:
+  """Saves the Copycat parameters to the Google Sheet.
+  
+  The parameters are written to a tab named "READ ONLY: Copycat Params".
+
+  Args:
+    event: The click event to handle.
+  """
+  state = me.state(states.AppState)
+  params = me.state(states.CopycatParamsState)
+
+  params_table = pd.DataFrame([dataclasses.asdict(params)])
+  params_table["Parameter Name"] = "Parameter Value"
+  params_table = params_table.set_index("Parameter Name")
+
+  sheet = sheets.GoogleSheet.load(state.google_sheet_url)
+  sheet["READ ONLY: Copycat Params"] = params_table
+
+
+def load_params_from_google_sheet(event: me.ClickEvent) -> None:
+  """Loads the Copycat parameters from the Google Sheet.
+
+  The parameters are read from a tab named "READ ONLY: Copycat Params".
+
+  Args:
+    event: The click event to handle.
+  """
+  state = me.state(states.AppState)
+  params = me.state(states.CopycatParamsState)
+
+  sheet = sheets.GoogleSheet.load(state.google_sheet_url)
+  params_table = sheet["READ ONLY: Copycat Params"]
+
+  for param_name in params_table:
+    param_value = params_table[param_name].values[0]
+    if isinstance(param_value, np.integer):
+      param_value = int(param_value)
+    elif isinstance(param_value, np.floating):
+      param_value = float(param_value)
+    else:
+      if param_value == "TRUE":
+        param_value = True
+      elif param_value == "FALSE":
+        param_value = False
+      else:
+        param_value = str(param_value)
+
+    setattr(params, param_name, param_value)
+
+    state.has_copycat_instance = "READ ONLY: Copycat Instance Params" in sheet
+
+
+def create_new_google_sheet(event: me.ClickEvent) -> None:
+  """Creates a new Google Sheet and initializes it with the default tabs.
+
+  The default tabs are:
+    - Training Ads
+    - New Keywords
+    - Extra Instructions for New Ads
+
+  Args:
+    event: The click event to handle.
+  """
+  state = me.state(states.AppState)
+  sheet = sheets.GoogleSheet.new(state.new_google_sheet_name)
+
+  reset_state(states.AppState)
+  reset_state(states.CopycatParamsState)
+  state = me.state(states.AppState)
+
+  state.google_sheet_url = sheet.url
+  state.google_sheet_name = sheet.title
+
+  sheet["Training Ads"] = pd.DataFrame(
+      columns=[
+          "Campaign ID",
+          "Ad Group",
+          "URL",
+          "Ad Strength",
+          "Keywords",
+      ] + [
+          f"Headline {i}" for i in range(1, 16)
+      ] + [
+          f"Description {i}" for i in range(1, 5)
+      ],
+  ).set_index(["Campaign ID", "Ad Group"])
+  sheet["New Keywords"] = pd.DataFrame(
+      columns=["Campaign ID", "Ad Group", "Keyword"],
+  ).set_index(["Campaign ID", "Ad Group"])
+  sheet["Extra Instructions for New Ads"] = pd.DataFrame(
+      columns=["Campaign ID", "Ad Group", "Extra Instructions"],
+  ).set_index(["Campaign ID", "Ad Group"])
+
+  sheet.delete_worksheet("Sheet1")
+  save_params_to_google_sheet(event)
+  close_starting_dialog(event)
+
+
+def load_existing_google_sheet(event: me.ClickEvent) -> None:
+  """Loads an existing Google Sheet.
+
+  The sheet should contain the following tabs:
+    - Training Ads
+    - New Keywords
+    - Extra Instructions for New Ads
+
+  Args:
+    event: The click event to handle.
+  """
+  state = me.state(states.AppState)
+  sheet = sheets.GoogleSheet.load(state.new_google_sheet_url)
+
+  reset_state(states.AppState)
+  reset_state(states.CopycatParamsState)
+  state = me.state(states.AppState)
+
+  # Load sheet
+  state.google_sheet_url = sheet.url
+  state.google_sheet_name = sheet.title
+
+  if "READ ONLY: Copycat Params" in sheet:
+    load_params_from_google_sheet(event)
+  else:
+    save_params_to_google_sheet(event)
+
+  close_starting_dialog(event)

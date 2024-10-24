@@ -17,6 +17,7 @@
 import mesop as me
 
 from copycat.ui import components
+from copycat.ui import event_handlers
 from copycat.ui import setup_page
 from copycat.ui import states
 from copycat.ui import styles
@@ -31,6 +32,90 @@ all_sub_pages.add_page(
 )
 
 
+@me.content_component
+def starting_dialog():
+  """The dialog that is shown when the user first opens the UI.
+  
+  This is also shown when they want to load a new Google Sheet.
+  """
+  state = me.state(states.AppState)
+
+  with components.dialog(is_open=state.show_starting_dialog):
+    if state.google_sheet_url:
+      # Can close if there is already a google sheet URL.
+      with me.content_button(
+          type="icon",
+          on_click=event_handlers.close_starting_dialog,
+      ):
+        me.icon("close", style=me.Style(color=me.theme_var("outline-variant")))
+
+    with components.column(align_items="center", width="100%", gap=0):
+      me.text("Welcome to Copycat", type="headline-5")
+      me.text("Please select a Google Sheet to load, or create a new one.")
+      me.text(
+          "WARNING: The data in the Google Sheet you use can be edited by"
+          " Copycat, so if you are loading an existing Google Sheet then it's"
+          " best to make a copy first and use the copy here.",
+          style=me.Style(
+              margin=me.Margin.all(15),
+              color=me.theme_var("error"),
+              width=400,
+              border=me.Border.all(
+                  me.BorderSide(
+                      width=1, color=me.theme_var("error"), style="solid"
+                  )
+              ),
+              text_align="center",
+          ),
+          type="body-2",
+      )
+      with components.row(width="100%", margin=me.Margin(top=15), gap=0):
+        with components.column(
+            align_items="center",
+            width="50%",
+            gap=0,
+            border=me.Border(right=styles.DEFAULT_BORDER_STYLE),
+        ):
+          me.text("Create New Google Sheet", type="headline-6")
+          me.input(
+              label="Google Sheet Name",
+              key="new_google_sheet_name",
+              on_blur=event_handlers.update_app_state_parameter,
+              value=state.new_google_sheet_name,
+              appearance="outline",
+              style=me.Style(
+                  width="100%",
+                  padding=me.Padding.all(0),
+              ),
+          )
+          me.button(
+              "New",
+              type="flat",
+              disabled=not state.new_google_sheet_name,
+              on_click=event_handlers.create_new_google_sheet,
+          )
+        with components.column(align_items="center", width="50%", gap=0):
+          me.text("Load Existing Sheet", type="headline-6")
+          me.input(
+              label="Google Sheet URL",
+              key="new_google_sheet_url",
+              on_blur=event_handlers.update_app_state_parameter,
+              value=state.new_google_sheet_url,
+              type="url",
+              appearance="outline",
+              style=me.Style(
+                  width="100%",
+                  padding=me.Padding.all(0),
+              ),
+          )
+          me.button(
+              "Load",
+              type="flat",
+              disabled=not state.new_google_sheet_url,
+              on_click=event_handlers.load_existing_google_sheet,
+          )
+
+
 @me.page(path="/")
 def home():
   """The home page of the Copycat UI.
@@ -39,6 +124,9 @@ def home():
   rendered by the sub-pages.
   """
   state = me.state(states.AppState)
+
+  with starting_dialog():
+    pass
 
   with me.box(
       style=me.Style(

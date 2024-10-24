@@ -30,6 +30,10 @@ class GoogleSheetTest(parameterized.TestCase):
     self.gspread_patcher = mock_gspread.PatchGspread()
     self.gspread_patcher.start()
 
+    dummy_credentials = "dummy_credentials"
+    sheets.set_google_auth_credentials(dummy_credentials)
+    self.client = gspread.authorize(dummy_credentials)
+
   def tearDown(self):
     super().tearDown()
     self.gspread_patcher.stop()
@@ -46,8 +50,7 @@ class GoogleSheetTest(parameterized.TestCase):
     self.assertEqual(str(google_sheet), expected_str)
 
   def test_can_instantiate_with_existing_sheet(self):
-    client = gspread.authorize(None)
-    spreadsheet = client.create("test_sheet")
+    spreadsheet = self.client.create("test_sheet")
     spreadsheet.add_worksheet("Another Sheet")
 
     google_sheet = sheets.GoogleSheet.load(spreadsheet.url)
@@ -67,8 +70,7 @@ class GoogleSheetTest(parameterized.TestCase):
     self.assertNotIn("Another Sheet", google_sheet)
 
   def test_can_load_data_as_pandas_dataframe(self):
-    client = gspread.authorize(None)
-    spreadsheet = client.create("test_sheet")
+    spreadsheet = self.client.create("test_sheet")
     spreadsheet.worksheet("Sheet1").update([
         ["header 1", "header 2"],
         ["row 1 col 1", "row 1 col 2"],
@@ -86,8 +88,7 @@ class GoogleSheetTest(parameterized.TestCase):
     pd.testing.assert_frame_equal(data, expected_data)
 
   def test_can_load_data_with_index_as_pandas_dataframe(self):
-    client = gspread.authorize(None)
-    spreadsheet = client.create("test_sheet")
+    spreadsheet = self.client.create("test_sheet")
     spreadsheet.worksheet("Sheet1").update([
         ["my_index", "header 1", "header 2"],
         ["a", "row 1 col 1", "row 1 col 2"],
@@ -116,8 +117,7 @@ class GoogleSheetTest(parameterized.TestCase):
 
     google_sheet["Sheet1"] = data
 
-    client = gspread.authorize(None)
-    spreadsheet = client.open_by_url(google_sheet.url)
+    spreadsheet = self.client.open_by_url(google_sheet.url)
     worksheet = spreadsheet.worksheet("Sheet1")
     self.assertListEqual(
         worksheet._data,
@@ -130,8 +130,7 @@ class GoogleSheetTest(parameterized.TestCase):
 
   def test_writing_data_updates_size_of_worksheet_to_match_data(self):
     google_sheet = sheets.GoogleSheet.new("test_sheet")
-    client = gspread.authorize(None)
-    spreadsheet = client.open_by_url(google_sheet.url)
+    spreadsheet = self.client.open_by_url(google_sheet.url)
     worksheet = spreadsheet.worksheet("Sheet1")
 
     self.assertEqual(worksheet.row_count, 1000)
@@ -155,8 +154,7 @@ class GoogleSheetTest(parameterized.TestCase):
         "header 2": ["row 1 col 2", "row 2 col 2"],
     }).set_index("my_index")
 
-    client = gspread.authorize(None)
-    spreadsheet = client.open_by_url(google_sheet.url)
+    spreadsheet = self.client.open_by_url(google_sheet.url)
     worksheet = spreadsheet.worksheet("Sheet1")
 
     for cell_format in worksheet._formatting[0]:
@@ -170,8 +168,7 @@ class GoogleSheetTest(parameterized.TestCase):
 
   def test_writing_freezes_the_index_and_columns(self):
     google_sheet = sheets.GoogleSheet.new("test_sheet")
-    client = gspread.authorize(None)
-    spreadsheet = client.open_by_url(google_sheet.url)
+    spreadsheet = self.client.open_by_url(google_sheet.url)
     worksheet = spreadsheet.worksheet("Sheet1")
 
     self.assertEqual(worksheet.frozen_row_count, 0)
@@ -188,8 +185,7 @@ class GoogleSheetTest(parameterized.TestCase):
 
   def test_writing_data_adds_worksheet_if_needed(self):
     google_sheet = sheets.GoogleSheet.new("test_sheet")
-    client = gspread.authorize(None)
-    spreadsheet = client.open_by_url(google_sheet.url)
+    spreadsheet = self.client.open_by_url(google_sheet.url)
 
     worksheet_names = [sheet.title for sheet in spreadsheet.worksheets()]
     self.assertListEqual(worksheet_names, ["Sheet1"])
@@ -238,6 +234,18 @@ class GoogleSheetTest(parameterized.TestCase):
     google_sheet["Sheet1"] = new_data
 
     pd.testing.assert_frame_equal(google_sheet["Sheet1"], new_data)
+
+  def test_delete_worksheet_deletes_the_worksheet(self):
+    google_sheet = sheets.GoogleSheet.new("test_sheet")
+    google_sheet["Sheet2"] = pd.DataFrame({
+        "my_index": ["a", "b", "c", "d"],
+        "header 1": ["1", "2", "3", "4"],
+        "header 2": ["5", "6", "7", "8"],
+    }).set_index("my_index")
+
+    self.assertIn("Sheet2", google_sheet)
+    google_sheet.delete_worksheet("Sheet2")
+    self.assertNotIn("Sheet2", google_sheet)
 
 
 if __name__ == "__main__":

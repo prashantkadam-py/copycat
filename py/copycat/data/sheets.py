@@ -15,7 +15,7 @@
 """Utility functions for loading and saving data to Google Sheets."""
 
 from typing import Any
-import google.auth
+import google.auth.credentials
 import gspread
 import pandas as pd
 
@@ -28,6 +28,31 @@ HEADING_FORMAT = {
         "foregroundColor": {"red": 1.0, "green": 1.0, "blue": 1.0},
     },
 }
+
+
+GOOGLE_AUTH_CREDENTIALS: google.auth.credentials.Credentials | None = None
+
+
+def set_google_auth_credentials(
+    credentials: google.auth.credentials.Credentials,
+) -> None:
+  """Sets the Google auth credentials.
+
+  These credentials are used to authorize the Google Sheets client. You can get
+  the credentials by calling google.auth.default().
+  """
+  global GOOGLE_AUTH_CREDENTIALS
+  GOOGLE_AUTH_CREDENTIALS = credentials
+
+
+def get_gspread_client() -> gspread.Client:
+  """Creates a Google Sheets client."""
+  if GOOGLE_AUTH_CREDENTIALS is None:
+    raise ValueError(
+        "Google auth credentials are not set. First call "
+        "set_google_auth_credentials()"
+    )
+  return gspread.authorize(GOOGLE_AUTH_CREDENTIALS)
 
 
 class GoogleSheet:
@@ -71,17 +96,6 @@ class GoogleSheet:
     ])
 
   @classmethod
-  def _make_client(cls) -> gspread.Client:
-    """Creates a Google Sheets client."""
-    creds, _ = google.auth.default(
-        scopes=[
-            "https://www.googleapis.com/auth/spreadsheets",
-            "https://www.googleapis.com/auth/drive",
-        ]
-    )
-    return gspread.authorize(creds)
-
-  @classmethod
   def new(cls, spreadsheet_name: str) -> "GoogleSheet":
     """Creates a Google Sheet DataFrame with a new spreadsheet.
 
@@ -91,7 +105,7 @@ class GoogleSheet:
     Returns:
       A GoogleSheet object referencing the new spreadsheet.
     """
-    spreadsheet = cls._make_client().create(spreadsheet_name)
+    spreadsheet = get_gspread_client().create(spreadsheet_name)
     return cls(spreadsheet)
 
   @classmethod
@@ -104,7 +118,7 @@ class GoogleSheet:
     Returns:
       A GoogleSheet object referencing the spreadsheet.
     """
-    spreadsheet = cls._make_client().open_by_url(url)
+    spreadsheet = get_gspread_client().open_by_url(url)
     return cls(spreadsheet)
 
   def __contains__(self, worksheet_title: str) -> bool:
@@ -307,3 +321,8 @@ class GoogleSheet:
     self._update_size_of_worksheet(worksheet_title, data_to_write)
     self.spreadsheet.worksheet(worksheet_title).batch_update(update_batches)
     self._update_worksheet_formatting(worksheet_title, n_index_cols)
+
+  def delete_worksheet(self, worksheet_title: str) -> None:
+    """Deletes the worksheet with the given title."""
+    worksheet = self.spreadsheet.worksheet(worksheet_title)
+    self.spreadsheet.del_worksheet(worksheet)

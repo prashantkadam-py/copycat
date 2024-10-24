@@ -254,6 +254,10 @@ class MockSpreadsheet:
     )
     return self.worksheet(title)
 
+  def del_worksheet(self, worksheet: MockWorksheet) -> None:
+    """Deletes the given worksheet from the spreadsheet."""
+    self._worksheets.pop(worksheet.title)
+
 
 class MockGspreadClient:
   """A mock gspread client for testing.
@@ -309,18 +313,12 @@ class PatchGspread:
         "gspread.authorize",
         return_value=self.mock_client,
     )
-    self._auth_patcher = mock.patch(
-        "google.auth.default",
-        return_value=(mock.MagicMock(), None),
-    )
 
   def start(self):
     self.mock_gspread_authorize = self._gspread_authorize_patcher.start()
-    self.mock_auth = self._auth_patcher.start()
 
   def stop(self):
     self._gspread_authorize_patcher.stop()
-    self._auth_patcher.stop()
 
   def __enter__(self) -> "PatchGspread":
     self.start()

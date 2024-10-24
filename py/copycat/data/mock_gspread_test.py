@@ -19,7 +19,6 @@ These test that the mock behaves like the real gspread client.
 
 from absl.testing import absltest
 from absl.testing import parameterized
-import google.auth
 import gspread
 
 from copycat.data import mock_gspread
@@ -37,8 +36,7 @@ class PatchEmbeddingsModelTest(parameterized.TestCase):
     self.gspread_patcher.stop()
 
   def test_create_makes_an_empty_sheet(self):
-    creds, _ = google.auth.default()
-    client = gspread.authorize(creds)
+    client = gspread.authorize(None)
     spreadsheet = client.create("test_spreadsheet")
 
     self.assertListEqual(
@@ -47,8 +45,7 @@ class PatchEmbeddingsModelTest(parameterized.TestCase):
     self.assertListEqual(spreadsheet.worksheet("Sheet1").get_all_records(), [])
 
   def test_get_url_loads_the_sheet_from_the_url(self):
-    creds, _ = google.auth.default()
-    client = gspread.authorize(creds)
+    client = gspread.authorize(None)
     spreadsheet = client.create("test_spreadsheet")
 
     retrieved_spreadsheet = client.open_by_url(spreadsheet.url)
@@ -56,8 +53,7 @@ class PatchEmbeddingsModelTest(parameterized.TestCase):
     self.assertIs(retrieved_spreadsheet, spreadsheet)
 
   def test_get_url_raises_exception_if_url_is_not_found(self):
-    creds, _ = google.auth.default()
-    client = gspread.authorize(creds)
+    client = gspread.authorize(None)
     spreadsheet = client.create("test_spreadsheet")
 
     with self.assertRaises(gspread.SpreadsheetNotFound):
@@ -66,8 +62,7 @@ class PatchEmbeddingsModelTest(parameterized.TestCase):
   def test_add_worksheet_adds_an_empty_worksheet_with_default_rows_and_columns(
       self,
   ):
-    creds, _ = google.auth.default()
-    client = gspread.authorize(creds)
+    client = gspread.authorize(None)
     spreadsheet = client.create("test_spreadsheet")
 
     spreadsheet.add_worksheet("new worksheet")
@@ -80,8 +75,7 @@ class PatchEmbeddingsModelTest(parameterized.TestCase):
   def test_add_worksheet_adds_an_empty_worksheet_with_specified_rows_and_columns(
       self,
   ):
-    creds, _ = google.auth.default()
-    client = gspread.authorize(creds)
+    client = gspread.authorize(None)
     spreadsheet = client.create("test_spreadsheet")
 
     spreadsheet.add_worksheet("new worksheet", rows=10, cols=2)
@@ -91,9 +85,25 @@ class PatchEmbeddingsModelTest(parameterized.TestCase):
     self.assertEqual(worksheet.row_count, 10)
     self.assertEqual(worksheet.col_count, 2)
 
+  def test_del_worksheet_deletes_the_worksheet(
+      self,
+  ):
+    client = gspread.authorize(None)
+    spreadsheet = client.create("test_spreadsheet")
+    spreadsheet.add_worksheet("new worksheet")
+
+    self.assertListEqual(
+        [sheet.title for sheet in spreadsheet.worksheets()],
+        ["Sheet1", "new worksheet"],
+    )
+
+    spreadsheet.del_worksheet(spreadsheet.worksheet("new worksheet"))
+    self.assertListEqual(
+        [sheet.title for sheet in spreadsheet.worksheets()], ["Sheet1"]
+    )
+
   def test_worksheets_returns_all_worksheets_in_the_spreadsheet(self):
-    creds, _ = google.auth.default()
-    client = gspread.authorize(creds)
+    client = gspread.authorize(None)
     spreadsheet = client.create("test_spreadsheet")
     spreadsheet.add_worksheet("new worksheet 1")
     spreadsheet.add_worksheet("new worksheet 2")
@@ -104,8 +114,7 @@ class PatchEmbeddingsModelTest(parameterized.TestCase):
     )
 
   def test_get_all_records_returns_expected_records(self):
-    creds, _ = google.auth.default()
-    client = gspread.authorize(creds)
+    client = gspread.authorize(None)
     spreadsheet = client.create("test_spreadsheet")
     worksheet = spreadsheet.worksheet("Sheet1")
 
@@ -142,8 +151,7 @@ class PatchEmbeddingsModelTest(parameterized.TestCase):
   def test_can_freeze_rows_and_columns(
       self, rows, cols, expected_frozen_rows, expected_frozen_cols
   ):
-    creds, _ = google.auth.default()
-    client = gspread.authorize(creds)
+    client = gspread.authorize(None)
     spreadsheet = client.create("test_spreadsheet")
     worksheet = spreadsheet.worksheet("Sheet1")
 
@@ -177,8 +185,7 @@ class PatchEmbeddingsModelTest(parameterized.TestCase):
   def test_format_adds_formatting_to_expected_cells(
       self, cell_range, expected_cells_with_formatting
   ):
-    creds, _ = google.auth.default()
-    client = gspread.authorize(creds)
+    client = gspread.authorize(None)
     spreadsheet = client.create("test_spreadsheet")
     worksheet = spreadsheet.add_worksheet("Sheet2", rows=3, cols=3)
 
@@ -215,8 +222,7 @@ class PatchEmbeddingsModelTest(parameterized.TestCase):
   def test_update_can_update_specific_cell_range(
       self, cell_range, values, expected_data
   ):
-    creds, _ = google.auth.default()
-    client = gspread.authorize(creds)
+    client = gspread.authorize(None)
     spreadsheet = client.create("test_spreadsheet")
     worksheet = spreadsheet.add_worksheet("Sheet2", rows=3, cols=3)
 
@@ -257,8 +263,7 @@ class PatchEmbeddingsModelTest(parameterized.TestCase):
       },
   ])
   def test_update_raises_value_error_if_out_of_range(self, cell_range, values):
-    creds, _ = google.auth.default()
-    client = gspread.authorize(creds)
+    client = gspread.authorize(None)
     spreadsheet = client.create("test_spreadsheet")
     worksheet = spreadsheet.add_worksheet("Sheet2", rows=3, cols=3)
 
@@ -266,8 +271,7 @@ class PatchEmbeddingsModelTest(parameterized.TestCase):
       worksheet.update(values, cell_range)
 
   def test_batch_update_applies_all_updates(self):
-    creds, _ = google.auth.default()
-    client = gspread.authorize(creds)
+    client = gspread.authorize(None)
     spreadsheet = client.create("test_spreadsheet")
     worksheet = spreadsheet.add_worksheet("Sheet2", rows=4, cols=4)
 
@@ -287,8 +291,7 @@ class PatchEmbeddingsModelTest(parameterized.TestCase):
     self.assertListEqual(worksheet._data, expected_data)
 
   def test_add_rows_adds_rows_to_the_worksheet(self):
-    creds, _ = google.auth.default()
-    client = gspread.authorize(creds)
+    client = gspread.authorize(None)
     spreadsheet = client.create("test_spreadsheet")
     worksheet = spreadsheet.add_worksheet("Sheet2", rows=4, cols=4)
 
@@ -297,8 +300,7 @@ class PatchEmbeddingsModelTest(parameterized.TestCase):
     self.assertEqual(worksheet.row_count, 6)
 
   def test_add_cols_adds_cols_to_the_worksheet(self):
-    creds, _ = google.auth.default()
-    client = gspread.authorize(creds)
+    client = gspread.authorize(None)
     spreadsheet = client.create("test_spreadsheet")
     worksheet = spreadsheet.add_worksheet("Sheet2", rows=4, cols=4)
 
@@ -330,8 +332,7 @@ class PatchEmbeddingsModelTest(parameterized.TestCase):
   def test_delete_rows_deletes_rows_from_the_worksheet(
       self, start_index, end_index, expected_data
   ):
-    creds, _ = google.auth.default()
-    client = gspread.authorize(creds)
+    client = gspread.authorize(None)
     spreadsheet = client.create("test_spreadsheet")
     worksheet = spreadsheet.add_worksheet("Sheet2", rows=4, cols=4)
     worksheet.update([
@@ -372,8 +373,7 @@ class PatchEmbeddingsModelTest(parameterized.TestCase):
   def test_delete_columns_deletes_columns_from_the_worksheet(
       self, start_index, end_index, expected_data
   ):
-    creds, _ = google.auth.default()
-    client = gspread.authorize(creds)
+    client = gspread.authorize(None)
     spreadsheet = client.create("test_spreadsheet")
     worksheet = spreadsheet.add_worksheet("Sheet2", rows=4, cols=4)
     worksheet.update([
@@ -386,8 +386,7 @@ class PatchEmbeddingsModelTest(parameterized.TestCase):
     self.assertListEqual(worksheet._data, expected_data)
 
   def test_clear_removes_all_data_and_formatting_from_the_worksheet(self):
-    creds, _ = google.auth.default()
-    client = gspread.authorize(creds)
+    client = gspread.authorize(None)
     spreadsheet = client.create("test_spreadsheet")
     worksheet = spreadsheet.add_worksheet("Sheet2", rows=4, cols=4)
     worksheet.update([
