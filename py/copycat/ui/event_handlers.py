@@ -147,8 +147,8 @@ def load_params_from_google_sheet(event: me.ClickEvent) -> None:
 
     setattr(params, param_name, param_value)
 
-    state.has_copycat_instance = "READ ONLY: Copycat Instance Params" in sheet
-    send_log(f"Loaded Copycat params from sheet")
+  state.has_copycat_instance = "READ ONLY: Copycat Instance Params" in sheet
+  send_log(f"Loaded Copycat params from sheet")
 
 
 def create_new_google_sheet(event: me.ClickEvent) -> None:

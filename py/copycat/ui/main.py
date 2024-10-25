@@ -32,14 +32,14 @@ all_sub_pages.add_page(
 )
 
 
-@me.content_component
-def starting_dialog():
+def starting_dialog(state: states.AppState):
   """The dialog that is shown when the user first opens the UI.
-  
-  This is also shown when they want to load a new Google Sheet.
-  """
-  state = me.state(states.AppState)
 
+  This is also shown when they want to load a new Google Sheet.
+
+  Args:
+    state: The AppState.
+  """
   with components.dialog(is_open=state.show_starting_dialog):
     if state.google_sheet_url:
       # Can close if there is already a google sheet URL.
@@ -76,7 +76,7 @@ def starting_dialog():
             gap=0,
             border=me.Border(right=styles.DEFAULT_BORDER_STYLE),
         ):
-          me.text("Create New Google Sheet", type="headline-6")
+          me.text("Create New Sheet", type="headline-6")
           me.input(
               label="Google Sheet Name",
               key="new_google_sheet_name",
@@ -116,6 +116,86 @@ def starting_dialog():
           )
 
 
+def main_copycat_header(state: states.AppState):
+  """The header bar that is shown at the top of the UI.
+
+  It contains the Copycat name, the Google Sheet URL, buttons to save and
+  load the parameters from the Google Sheet, and a drop down to select the
+  logging level.
+
+  Args:
+    state: The AppState.
+  """
+
+  with components.header_bar(
+      border=me.Border.symmetric(vertical=styles.DEFAULT_BORDER_STYLE)
+  ):
+    with components.header_section():
+      me.text(
+          "Copycat",
+          type="headline-3",
+          style=me.Style(margin=me.Margin(bottom=0)),
+      )
+
+    with components.header_section():
+      me.text(
+          "Google Sheet URL",
+          type="headline-6",
+          style=me.Style(margin=me.Margin(bottom=0)),
+      )
+      me.input(
+          label="URL",
+          value=state.google_sheet_url,
+          type="url",
+          appearance="outline",
+          style=me.Style(
+              width=500,
+              padding=me.Padding.all(0),
+              margin=me.Margin(top=20),
+          ),
+          readonly=True,
+      )
+
+    with components.header_section():
+      pass
+
+
+def body_and_google_sheet_preview(state: states.AppState):
+  """The main body of the UI.
+
+  It contains the sub pages (left), and the Google Sheet preview if it is
+  enabled (right).
+
+  Args:
+    state: The AppState.
+  """
+
+  with components.row(
+      gap=0,
+      height="100%",
+      width="100%",
+  ):
+    all_sub_pages.render(
+        height="100%",
+        width="50%" if state.display_google_sheet else "100%",
+        gap=0,
+        border=me.Border(right=styles.DEFAULT_BORDER_STYLE),
+    )
+
+  # Google Sheet
+  if state.display_google_sheet:
+    with me.box(
+        style=me.Style(
+            height="100%",
+            width="50%",
+        )
+    ):
+      me.embed(
+          src=state.google_sheet_url,
+          style=me.Style(width="100%", height="100%"),
+      )
+
+
 @me.page(path="/")
 def home():
   """The home page of the Copycat UI.
@@ -125,70 +205,8 @@ def home():
   """
   state = me.state(states.AppState)
 
-  with starting_dialog():
-    pass
+  starting_dialog(state)
 
-  with me.box(
-      style=me.Style(
-          display="grid", grid_template_rows="auto 1fr auto", height="100%"
-      )
-  ):
-
-    # The header bar, containing the Copycat name and the Google Sheet URL.
-    with components.header_bar(
-        border=me.Border.symmetric(vertical=styles.DEFAULT_BORDER_STYLE)
-    ):
-      with components.header_section():
-        me.text(
-            "Copycat",
-            type="headline-3",
-            style=me.Style(margin=me.Margin(bottom=0)),
-        )
-
-      with components.header_section():
-        me.text(
-            "Google Sheet URL",
-            type="headline-6",
-            style=me.Style(margin=me.Margin(bottom=0)),
-        )
-        me.input(
-            label="URL",
-            value=state.google_sheet_url,
-            type="url",
-            appearance="outline",
-            style=me.Style(
-                width=500,
-                padding=me.Padding.all(0),
-                margin=me.Margin(top=20),
-            ),
-            readonly=True,
-        )
-
-      with components.header_section():
-        pass
-
-    # Google Sheet and Body
-    with components.row(
-        gap=0,
-        height="100%",
-        width="100%",
-    ):
-      all_sub_pages.render(
-          height="100%",
-          width="50%" if state.display_google_sheet else "100%",
-          gap=0,
-          border=me.Border(right=styles.DEFAULT_BORDER_STYLE),
-      )
-
-    # Google Sheet
-    if state.display_google_sheet:
-      with me.box(
-          style=me.Style(
-              height="100%",
-              width="50%",
-          )
-      ):
-        me.embed(
-            src=state.google_sheet_url,
-            style=me.Style(width="100%", height="100%"),
-        )
+  with components.column(height="100%", width="100%", gap=0):
+    main_copycat_header(state)
+    body_and_google_sheet_preview(state)
