@@ -13,6 +13,7 @@
 # limitations under the License.
 
 """States for the Copycat UI."""
+import logging
 
 import mesop as me
 
@@ -32,6 +33,7 @@ class AppState:
   google_sheet_is_valid: bool = False
   has_copycat_instance: bool = False
   new_ad_preview_request: str = ""
+  log_level: int = logging.INFO
 
 
 @me.stateclass

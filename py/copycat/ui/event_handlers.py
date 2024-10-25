@@ -76,6 +76,16 @@ def close_starting_dialog(event: me.ClickEvent) -> None:
   state.show_starting_dialog = False
 
 
+def open_starting_dialog(event: me.ClickEvent) -> None:
+  """Opens the starting dialog by setting show_starting_dialog to True.
+
+  Args:
+    event: The click event to handle.
+  """
+  state = me.state(states.AppState)
+  state.show_starting_dialog = True
+
+
 def reset_state(
     state: type[states.AppState] | type[states.CopycatParamsState],
 ) -> None:
@@ -98,7 +108,7 @@ def reset_state(
 
 def save_params_to_google_sheet(event: me.ClickEvent) -> None:
   """Saves the Copycat parameters to the Google Sheet.
-  
+
   The parameters are written to a tab named "READ ONLY: Copycat Params".
 
   Args:
@@ -180,11 +190,9 @@ def create_new_google_sheet(event: me.ClickEvent) -> None:
           "URL",
           "Ad Strength",
           "Keywords",
-      ] + [
-          f"Headline {i}" for i in range(1, 16)
-      ] + [
-          f"Description {i}" for i in range(1, 5)
-      ],
+      ]
+      + [f"Headline {i}" for i in range(1, 16)]
+      + [f"Description {i}" for i in range(1, 5)],
   ).set_index(["Campaign ID", "Ad Group"])
   sheet["New Keywords"] = pd.DataFrame(
       columns=["Campaign ID", "Ad Group", "Keyword"],
@@ -255,3 +263,25 @@ def send_log(message: str, level: int = logging.INFO) -> None:
   """
   logger = logging.getLogger("copycat.ui")
   logger.log(level=level, msg=message)
+
+
+def update_log_level(event: me.SelectSelectionChangeEvent) -> None:
+  """Updates the log level of the logger.
+
+  Args:
+    event: The select selection change event to handle.
+  """
+  state = me.state(states.AppState)
+  state.log_level = int(event.value)
+  logger = logging.getLogger("copycat")
+  logger.handlers[0].setLevel(state.log_level)
+
+
+def show_hide_google_sheet(event: me.ClickEvent) -> None:
+  """Shows or hides the Google Sheet preview panel.
+
+  Args:
+    event: The click event to handle.
+  """
+  state = me.state(states.AppState)
+  state.display_google_sheet = not state.display_google_sheet

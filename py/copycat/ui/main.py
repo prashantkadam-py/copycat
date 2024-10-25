@@ -14,6 +14,8 @@
 
 """The main entrypoint for the Copycat UI."""
 
+import logging
+
 import mesop as me
 
 from copycat.ui import components
@@ -155,9 +157,54 @@ def main_copycat_header(state: states.AppState):
           ),
           readonly=True,
       )
+      with me.content_button(
+          style=me.Style(
+              padding=me.Padding.symmetric(vertical=30, horizontal=25)
+          ),
+          on_click=event_handlers.save_params_to_google_sheet,
+      ):
+        me.icon("save")
+        me.text("Save")
+
+      with me.content_button(
+          style=me.Style(
+              padding=me.Padding.symmetric(vertical=30, horizontal=25)
+          ),
+          on_click=event_handlers.open_starting_dialog,
+      ):
+        me.icon("add_circle")
+        me.text("New / Load")
+
+      with me.content_button(
+          style=me.Style(
+              padding=me.Padding.symmetric(vertical=30, horizontal=25)
+          ),
+          on_click=event_handlers.show_hide_google_sheet,
+      ):
+        if state.display_google_sheet:
+          me.icon("visibility_off")
+          me.text("Hide Preview")
+        else:
+          me.icon("visibility")
+          me.text("Show Preview")
 
     with components.header_section():
-      pass
+      me.select(
+          label="Log Level",
+          options=[
+              me.SelectOption(label="DEBUG", value=str(logging.DEBUG)),
+              me.SelectOption(label="INFO", value=str(logging.INFO)),
+              me.SelectOption(label="ERROR", value=str(logging.ERROR)),
+              me.SelectOption(label="CRITICAL", value=str(logging.CRITICAL)),
+          ],
+          on_selection_change=event_handlers.update_log_level,
+          multiple=False,
+          value=str(state.log_level),
+          style=me.Style(
+              padding=me.Padding.all(0),
+              margin=me.Margin(top=20),
+          ),
+      )
 
 
 def body_and_google_sheet_preview(state: states.AppState):
@@ -182,18 +229,18 @@ def body_and_google_sheet_preview(state: states.AppState):
         border=me.Border(right=styles.DEFAULT_BORDER_STYLE),
     )
 
-  # Google Sheet
-  if state.display_google_sheet:
-    with me.box(
-        style=me.Style(
-            height="100%",
-            width="50%",
+    # Google Sheet
+    if state.display_google_sheet:
+      with me.box(
+          style=me.Style(
+              height="100%",
+              width="50%",
+          )
+      ):
+        me.embed(
+            src=state.google_sheet_url,
+            style=me.Style(width="100%", height="100%"),
         )
-    ):
-      me.embed(
-          src=state.google_sheet_url,
-          style=me.Style(width="100%", height="100%"),
-      )
 
 
 @me.page(path="/")
