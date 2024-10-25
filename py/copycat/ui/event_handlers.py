@@ -15,6 +15,7 @@
 """A collection of re-usable event handlers for the Copycat UI."""
 
 import dataclasses
+import logging
 
 import mesop as me
 import numpy as np
@@ -83,6 +84,7 @@ def reset_state(
   Args:
     state: The state to reset.
   """
+  send_log(f"Resetting state: {state}")
   params = me.state(state)
 
   for field in dataclasses.fields(params):
@@ -111,6 +113,8 @@ def save_params_to_google_sheet(event: me.ClickEvent) -> None:
 
   sheet = sheets.GoogleSheet.load(state.google_sheet_url)
   sheet["READ ONLY: Copycat Params"] = params_table
+
+  send_log("Copycat params saved to sheet")
 
 
 def load_params_from_google_sheet(event: me.ClickEvent) -> None:
@@ -144,6 +148,7 @@ def load_params_from_google_sheet(event: me.ClickEvent) -> None:
     setattr(params, param_name, param_value)
 
     state.has_copycat_instance = "READ ONLY: Copycat Instance Params" in sheet
+    send_log(f"Loaded Copycat params from sheet")
 
 
 def create_new_google_sheet(event: me.ClickEvent) -> None:
@@ -159,6 +164,7 @@ def create_new_google_sheet(event: me.ClickEvent) -> None:
   """
   state = me.state(states.AppState)
   sheet = sheets.GoogleSheet.new(state.new_google_sheet_name)
+  start_logger(sheet.url)
 
   reset_state(states.AppState)
   reset_state(states.CopycatParamsState)
@@ -190,6 +196,7 @@ def create_new_google_sheet(event: me.ClickEvent) -> None:
   sheet.delete_worksheet("Sheet1")
   save_params_to_google_sheet(event)
   close_starting_dialog(event)
+  send_log("New Google Sheet created")
 
 
 def load_existing_google_sheet(event: me.ClickEvent) -> None:
@@ -205,6 +212,7 @@ def load_existing_google_sheet(event: me.ClickEvent) -> None:
   """
   state = me.state(states.AppState)
   sheet = sheets.GoogleSheet.load(state.new_google_sheet_url)
+  start_logger(sheet.url)
 
   reset_state(states.AppState)
   reset_state(states.CopycatParamsState)
@@ -220,3 +228,30 @@ def load_existing_google_sheet(event: me.ClickEvent) -> None:
     save_params_to_google_sheet(event)
 
   close_starting_dialog(event)
+  send_log("Existing Google Sheet loaded")
+
+
+def start_logger(url: str) -> None:
+  """Starts the logger and writes logs to a Google Sheet.
+
+  Args:
+    url: The URL of the Google Sheet to write logs to.
+  """
+  handler = sheets.GoogleSheetsHandler(sheet_url=url, log_worksheet_name="Logs")
+  handler.setLevel(logging.INFO)
+  logger = logging.getLogger("copycat")
+  logger.handlers = []
+  logger.addHandler(handler)
+  logger.setLevel(logging.INFO)
+  logger.info("Logger Started")
+
+
+def send_log(message: str, level: int = logging.INFO) -> None:
+  """Sends a log message to the logger.
+
+  Args:
+    message: The log message to send.
+    level: The level of the log message. Defaults to INFO.
+  """
+  logger = logging.getLogger("copycat.ui")
+  logger.log(level=level, msg=message)

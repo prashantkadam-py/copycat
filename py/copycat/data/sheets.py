@@ -331,6 +331,16 @@ class GoogleSheet:
 
 
 class GoogleSheetsLogSender:
+  """A class for sending logs to Google Sheets.
+
+  This class provides a convenient way to send logs to Google Sheets. It creates
+  a new worksheet or uses an existing one to store the logs.
+
+  Attributes:
+    client: The Google Sheets client.
+    spreadsheet: The Google Sheets spreadsheet.
+    log_worksheet: The Google Sheets worksheet for logs.
+  """
 
   HEADINGS = ["UTC Timestamp", "Log Level", "Logger Name", "Message"]
 
@@ -339,6 +349,13 @@ class GoogleSheetsLogSender:
       sheet_url: str,
       log_worksheet_name: str = "Logs",
   ):
+    """Initializes the GoogleSheetsLogSender object.
+
+    Args:
+      sheet_url: The URL of the spreadsheet to send logs to.
+      log_worksheet_name: The name of the worksheet to send logs to. If the
+        worksheet does not exist, then it is created.
+    """
     self.client = get_gspread_client()
     self.spreadsheet = self.client.open_by_url(sheet_url)
 
@@ -349,7 +366,7 @@ class GoogleSheetsLogSender:
       self.log_worksheet = self.spreadsheet.add_worksheet(
           title=log_worksheet_name, rows=2, cols=4
       )
-      self.log_worksheet.update(range_name="A1:D1", values=[self.HEADINGS])
+      self.log_worksheet.update([self.HEADINGS])
       self.log_worksheet.format(ranges=["A1:D1"], format=HEADING_FORMAT)
     else:
       self.log_worksheet = self.spreadsheet.worksheet(log_worksheet_name)
@@ -362,6 +379,11 @@ class GoogleSheetsLogSender:
       )
 
   def write_log(self, msg: logging.LogRecord) -> None:
+    """Writes a log record to the log worksheet.
+
+    Args:
+      msg: The log record to write.
+    """
     self.log_worksheet.insert_row(
         [
             time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(msg.created)),
@@ -374,12 +396,27 @@ class GoogleSheetsLogSender:
 
 
 class GoogleSheetsHandler(logging.Handler):
+  """A logging handler that sends logs to Google Sheets.
+
+  This class is a logging handler that sends logs to Google Sheets. It creates
+  a new worksheet or uses an existing one to store the logs.
+
+  Attributes:
+    sender: The GoogleSheetsLogSender object.
+  """
 
   def __init__(
       self,
       sheet_url: str,
       log_worksheet_name: str = "Logs",
   ) -> None:
+    """Initializes the GoogleSheetsHandler object.
+
+    Args:
+      sheet_url: The URL of the spreadsheet to send logs to.
+      log_worksheet_name: The name of the worksheet to send logs to. If the
+        worksheet does not exist, then it is created.
+    """
     self.sender = GoogleSheetsLogSender(
         sheet_url=sheet_url,
         log_worksheet_name=log_worksheet_name,
@@ -387,4 +424,9 @@ class GoogleSheetsHandler(logging.Handler):
     super().__init__()
 
   def emit(self, record: logging.LogRecord) -> None:
+    """Emits a log record to the log worksheet.
+
+    Args:
+      record: The log record to emit.
+    """
     self.sender.write_log(record)
