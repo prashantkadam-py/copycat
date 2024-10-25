@@ -285,3 +285,114 @@ def show_hide_google_sheet(event: me.ClickEvent) -> None:
   """
   state = me.state(states.AppState)
   state.display_google_sheet = not state.display_google_sheet
+
+
+def validate_sheet(event: me.ClickEvent) -> None:
+  """Validates the Google Sheet.
+
+  The sheet is validated by checking that it contains the required tabs,
+  index columns, and columns, and that it has the minimum number of rows.
+
+  Args:
+    event: The click event to handle.
+  """
+  state = me.state(states.AppState)
+  sheet_url = state.google_sheet_url
+  send_log(f"Validating {sheet_url}")
+
+  sheet = sheets.GoogleSheet.load(sheet_url)
+  send_log(f"Sheet Name = {sheet.title}")
+
+  # Validate all required sheets exist, have the correct index and columns,
+  # and have the minimum number of rows.
+  required_index_names = ["Campaign ID", "Ad Group"]
+  required_columns = {
+      "Training Ads": set([
+          "URL",
+          "Ad Strength",
+          "Keywords",
+          "Headline 1",
+          "Description 1",
+      ]),
+      "New Keywords": set([
+          "Keyword",
+      ]),
+      "Extra Instructions for New Ads": set([
+          "Extra Instructions",
+      ]),
+  }
+  min_rows = {
+      "Training Ads": 1,
+      "New Keywords": 1,
+      "Extra Instructions for New Ads": 0,
+  }
+
+  for sheet_name in [
+      "Training Ads",
+      "New Keywords",
+      "Extra Instructions for New Ads",
+  ]:
+    if sheet_name in sheet:
+      send_log(f"{sheet_name} sheet found")
+    else:
+      send_log(
+          f"VALIDATION FAILED: {sheet_name} sheet not found.", logging.ERROR
+      )
+      state.google_sheet_is_valid = False
+      return
+
+    worksheet = sheet[sheet_name]
+    actual_index_names = list(worksheet.index.names)
+    if required_index_names != actual_index_names:
+      send_log(
+          f"Sheet not valid: {sheet_name} requires index columns:"
+          f" {required_index_names}, but found {actual_index_names}.",
+          logging.ERROR,
+      )
+      state.google_sheet_is_valid = False
+      return
+
+    actual_columns = set(worksheet.columns.values.tolist())
+    extra_columns = actual_columns - required_columns[sheet_name]
+    missing_columns = required_columns[sheet_name] - actual_columns
+
+    if missing_columns:
+      send_log(
+          f"Sheet not valid: Missing columns in {sheet_name}:"
+          f" {missing_columns}",
+          logging.ERROR,
+      )
+      state.google_sheet_is_valid = False
+      return
+    else:
+      send_log(f"All required columns in {sheet_name}")
+
+    if extra_columns:
+      send_log(f"{sheet_name} has the following extra columns: {extra_columns}")
+
+    n_rows = len(worksheet)
+    if n_rows < min_rows[sheet_name]:
+      send_log(
+          f"Sheet not valid: {sheet_name} sheet has fewer than the minimum"
+          f" number of rows: min={min_rows[sheet_name]}.",
+          logging.ERROR,
+      )
+      state.google_sheet_is_valid = False
+      return
+    else:
+      send_log(f"{sheet_name} has {n_rows:,} rows")
+
+  # Log the number of headline and description columns in the training ads
+  training_ads = sheet["Training Ads"]
+  n_headline_columns = len(
+      [c for c in training_ads.columns if c.startswith("Headline")]
+  )
+  n_description_columns = len(
+      [c for c in training_ads.columns if c.startswith("Description")]
+  )
+  send_log(f"Training Ads have up to {n_headline_columns} headlines.")
+  send_log(f"Training Ads have up to {n_description_columns} descriptions.")
+
+  # Completed validation
+  send_log("Validation complete: Google Sheet is valid")
+  state.google_sheet_is_valid = True

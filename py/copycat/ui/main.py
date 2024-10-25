@@ -20,6 +20,7 @@ import mesop as me
 
 from copycat.ui import components
 from copycat.ui import event_handlers
+from copycat.ui import prepare_data_page
 from copycat.ui import setup_page
 from copycat.ui import states
 from copycat.ui import styles
@@ -31,6 +32,11 @@ all_sub_pages.add_page(
     setup_page.setup,
     nav_text="Setup",
     nav_icon="settings",
+)
+all_sub_pages.add_page(
+    prepare_data_page.prepare_data,
+    nav_text="Prepare Data",
+    nav_icon="download",
 )
 
 
