@@ -15,13 +15,17 @@
 """A collection of re-usable event handlers for the Copycat UI."""
 
 import dataclasses
+import json
 import logging
 
+import vertexai
 import mesop as me
 import numpy as np
 import pandas as pd
 
+from copycat import copycat
 from copycat.data import sheets
+from copycat.data import utils as data_utils
 from copycat.ui import states
 
 
@@ -59,6 +63,82 @@ def update_app_state_parameter(event: me.InputEvent) -> None:
       setattr(state, event.key, field.type(event.value))
       return
   raise ValueError(f"Field {event.key} does not exist in AppState.")
+
+
+def update_copycat_parameter_from_slide_toggle(
+    event: me.SlideToggleChangeEvent,
+) -> None:
+  """Updates a copycat parameter from a slide toggle change event.
+
+  Args:
+    event: The slide toggle change event to handle.
+  """
+  state = me.state(states.CopycatParamsState)
+  setattr(state, event.key, not getattr(state, event.key))
+
+
+def language_on_blur(event: me.InputBlurEvent) -> None:
+  """Updates the language and the embedding model name based on the language.
+
+  Args:
+    event: The input blur event to handle.
+  """
+  state = me.state(states.CopycatParamsState)
+  state.language = event.value
+
+  if "english" in event.value.lower():
+    state.embedding_model_name = copycat.EmbeddingModelName.TEXT_EMBEDDING.value
+  else:
+    state.embedding_model_name = (
+        copycat.EmbeddingModelName.TEXT_MULTILINGUAL_EMBEDDING.value
+    )
+
+  send_log(
+      f"Updating embedding model name to {state.embedding_model_name} for"
+      f" language = {state.language}"
+  )
+
+
+def ad_format_on_change(event: me.RadioChangeEvent) -> None:
+  """Updates the ad format and related parameters in the CopycatParamsState.
+
+  Args:
+    event: The radio change event to handle.
+  """
+  state = me.state(states.CopycatParamsState)
+  state.ad_format = event.value
+
+  if state.ad_format != "custom":
+    send_log(
+        f"Updating max headlines and descriptions for {state.ad_format} ad"
+        " format"
+    )
+    ad_format = copycat.google_ads.get_google_ad_format(event.value)
+    state.max_headlines = ad_format.max_headlines
+    state.max_descriptions = ad_format.max_descriptions
+  else:
+    send_log(
+        f"Max headlines and descriptions not updated for {state.ad_format} ad"
+        " format"
+    )
+
+
+def embedding_model_dimensionality_on_blur(event: me.InputBlurEvent) -> None:
+  """Updates the embedding model dimensionality based on the input value.
+
+  The value is clamped to the range [10, 768].
+
+  Args:
+    event: The input blur event to handle.
+  """
+  state = me.state(states.CopycatParamsState)
+  raw_value = int(event.value)
+  if raw_value > 786:
+    state.embedding_model_dimensionality = 768
+  elif raw_value < 10:
+    state.embedding_model_dimensionality = 10
+  else:
+    state.embedding_model_dimensionality = raw_value
 
 
 def close_starting_dialog(event: me.ClickEvent) -> None:
@@ -141,24 +221,19 @@ def load_params_from_google_sheet(event: me.ClickEvent) -> None:
   sheet = sheets.GoogleSheet.load(state.google_sheet_url)
   params_table = sheet["READ ONLY: Copycat Params"]
 
-  for param_name in params_table:
-    param_value = params_table[param_name].values[0]
-    if isinstance(param_value, np.integer):
-      param_value = int(param_value)
-    elif isinstance(param_value, np.floating):
-      param_value = float(param_value)
-    else:
-      if param_value == "TRUE":
+  for field in dataclasses.fields(params):
+    if field.name in params_table:
+      param_value = params_table[field.name].values[0]
+      if field.type is bool and param_value == "TRUE":
         param_value = True
-      elif param_value == "FALSE":
+      elif field.type is bool and param_value == "FALSE":
         param_value = False
       else:
-        param_value = str(param_value)
-
-    setattr(params, param_name, param_value)
+        param_value = field.type(param_value)
+      setattr(params, field.name, param_value)
 
   state.has_copycat_instance = "READ ONLY: Copycat Instance Params" in sheet
-  send_log(f"Loaded Copycat params from sheet")
+  send_log("Loaded Copycat params from sheet")
 
 
 def create_new_google_sheet(event: me.ClickEvent) -> None:
@@ -395,3 +470,114 @@ def validate_sheet(event: me.ClickEvent) -> None:
     send_log("VALIDATION COMPLETED: Google Sheet is valid")
   else:
     send_log("VALIDATION COMPLETED: Google Sheet is invalid", logging.ERROR)
+
+
+def save_copycat_to_sheet(
+    sheet: sheets.GoogleSheet, model: copycat.Copycat
+) -> None:
+  """Saves the Copycat model to the Google Sheet.
+
+  The model is saved in two tabs:
+    - READ ONLY: Training Ad Exemplars: Contains the exemplar ads.
+    - READ ONLY: Copycat Instance Params: Contains the other model parameters.
+
+  Args:
+    sheet: The Google Sheet to save the model to.
+    model: The Copycat model to save.
+  """
+  model_params = model.to_dict()
+
+  # Store the exemplar ads in their own sheet
+  exemplars_dict = model_params["ad_copy_vectorstore"].pop("ad_exemplars")
+  ad_exemplars = pd.DataFrame.from_dict(exemplars_dict, orient="tight")
+  ad_exemplars["embeddings"] = ad_exemplars["embeddings"].apply(
+      lambda x: ", ".join(list(map(str, x)))
+  )
+  ad_exemplars = data_utils.explode_headlines_and_descriptions(ad_exemplars)
+  ad_exemplars.index.name = "Exemplar Number"
+  sheet["READ ONLY: Training Ad Exemplars"] = ad_exemplars
+
+  # Store the other params as a json string
+  other_params = pd.DataFrame([{
+      "params_json": json.dumps(model_params),
+  }])
+  sheet["READ ONLY: Copycat Instance Params"] = other_params
+
+
+def build_new_copycat_instance(event: me.ClickEvent):
+  """Builds a new Copycat instance from the Google Sheet.
+
+  The Copycat instance is created using the parameters from the Google Sheet
+  and the CopycatParamsState. The instance is then saved to the Google Sheet.
+
+  Args:
+    event: The click event to handle.
+  """
+  state = me.state(states.AppState)
+  params = me.state(states.CopycatParamsState)
+  sheet = sheets.GoogleSheet.load(state.google_sheet_url)
+  save_params_to_google_sheet(event)
+
+  vertexai.init(
+      project=params.vertex_ai_project_id, location=params.vertex_ai_location
+  )
+
+  train_data = data_utils.collapse_headlines_and_descriptions(
+      sheet["Training Ads"]
+  )
+  train_data = train_data.rename({"Keywords": "keywords"}, axis=1)
+  train_data = train_data[["headlines", "descriptions", "keywords"]]
+  train_data = train_data.loc[train_data["headlines"].apply(len) > 0]
+
+  send_log(f"Loaded {len(train_data)} rows of raw data from the Google Sheet.")
+
+  if params.ad_format == "custom":
+    ad_format = copycat.google_ads.GoogleAdFormat(
+        name="custom",
+        max_headlines=params.max_headlines,
+        max_descriptions=params.max_descriptions,
+        min_headlines=1,
+        min_descriptions=1,
+        max_headline_length=30,
+        max_description_length=90,
+    )
+    send_log("Using a custom ad format.")
+  else:
+    ad_format = copycat.google_ads.get_google_ad_format(params.ad_format)
+    send_log(f"Using the following ad format: {ad_format.name}")
+
+  affinity_preference = (
+      params.custom_affinity_preference
+      if params.use_custom_affinity_preference
+      else None
+  )
+  send_log(
+      "Affinity preference:"
+      f" {affinity_preference} (custom={params.use_custom_affinity_preference})"
+  )
+
+  send_log("Creating Copycat.")
+
+  model = copycat.Copycat.create_from_pandas(
+      training_data=train_data,
+      ad_format=ad_format,
+      on_invalid_ad=params.on_invalid_ad,
+      embedding_model_name=params.embedding_model_name,
+      embedding_model_dimensionality=params.embedding_model_dimensionality,
+      embedding_model_batch_size=params.embedding_model_batch_size,
+      vectorstore_exemplar_selection_method=params.exemplar_selection_method,
+      vectorstore_max_initial_ads=params.max_initial_ads,
+      vectorstore_max_exemplar_ads=params.max_exemplar_ads,
+      vectorstore_affinity_preference=affinity_preference,
+      replace_special_variables_with_default=params.how_to_handle_special_variables
+      == "replace",
+  )
+  send_log(
+      "Copycat instance created with"
+      f" {model.ad_copy_vectorstore.n_exemplars} exemplar ads."
+  )
+
+  save_copycat_to_sheet(sheet, model)
+  state.has_copycat_instance = True
+
+  send_log("Copycat instance stored in google sheet.")

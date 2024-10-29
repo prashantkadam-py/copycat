@@ -210,7 +210,7 @@ class GoogleSheet:
           cols=len(data[0]),
       )
     self._update_size_of_worksheet(worksheet_title, data)
-    worksheet.update(data)
+    worksheet.update(data, raw=False)
     self._update_worksheet_formatting(worksheet_title, n_index_cols)
 
   def _update_worksheet_formatting(
@@ -370,7 +370,7 @@ class GoogleSheetsLogSender:
       self.log_worksheet = self.spreadsheet.add_worksheet(
           title=log_worksheet_name, rows=2, cols=4
       )
-      self.log_worksheet.update([self.HEADINGS])
+      self.log_worksheet.update([self.HEADINGS], raw=False)
       self.log_worksheet.format(ranges=["A1:D1"], format=HEADING_FORMAT)
     else:
       self.log_worksheet = self.spreadsheet.worksheet(log_worksheet_name)

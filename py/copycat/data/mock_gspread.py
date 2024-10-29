@@ -175,7 +175,11 @@ class MockWorksheet:
       )
 
   def update(
-      self, values: list[list[Any]], range_name: str | None = None
+      self,
+      values: list[list[Any]],
+      range_name: str | None = None,
+      *args,
+      **kwargs
   ) -> None:
     """Updates the data in the worksheet."""
     if range_name is None:
