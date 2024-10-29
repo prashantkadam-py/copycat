@@ -150,9 +150,13 @@ class GoogleSheet:
       A pandas DataFrame containing the data from the worksheet.
     """
     worksheet = self.spreadsheet.worksheet(worksheet_title)
-    data = pd.DataFrame(
-        worksheet.get_all_records(value_render_option="UNFORMATTED_VALUE")
-    )
+    records = worksheet.get_all_records(value_render_option="UNFORMATTED_VALUE")
+
+    if records:
+      data = pd.DataFrame(records)
+    else:
+      column_names = list(filter(None, worksheet.row_values(1)))
+      data = pd.DataFrame(columns=column_names)
 
     index_cols = data.columns.values[: worksheet.frozen_col_count].tolist()
     if index_cols:

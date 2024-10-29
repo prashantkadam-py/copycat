@@ -73,12 +73,17 @@ class MockWorksheet:
     columns = list(filter(None, self._data[0]))
     rows = list(filter(None, [row[: len(columns)] for row in self._data[1:]]))
 
-    # Remove empty rows from the end of the worksheet.
-    i = 0
+    # Find the index of the first non-empty row (counting backwards).
     for i, row in enumerate(rows[::-1]):
+      # Start at the end of the worksheet and work backwards.
       if list(filter(None, row)):
+        # Stop counting at the first non-empty row.
         break
+    else:
+      # If there are no non-empty rows, set i to the length of the rows list.
+      i = len(rows)
 
+    # Remove the empty rows from the end of the worksheet.
     last_idx = len(rows) - i
     rows = rows[:last_idx]
 

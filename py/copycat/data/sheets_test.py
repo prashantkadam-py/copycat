@@ -110,6 +110,50 @@ class GoogleSheetTest(parameterized.TestCase):
 
     pd.testing.assert_frame_equal(data, expected_data)
 
+  def test_loading_data_with_only_column_names_and_empty_row_returns_expected_data(
+      self,
+  ):
+    spreadsheet = self.client.create("test_sheet")
+    spreadsheet.add_worksheet("Sheet2", rows=2, cols=3)
+    spreadsheet.worksheet("Sheet2").update(
+        [["my_index", "header 1", "header 2"]]
+    )
+    spreadsheet.worksheet("Sheet2").freeze(cols=1)  # Indexes are frozen columns
+
+    google_sheet = sheets.GoogleSheet.load(spreadsheet.url)
+    data = google_sheet["Sheet2"]
+
+    expected_data = pd.DataFrame(
+        columns=[
+            "my_index",
+            "header 1",
+            "header 2",
+        ]
+    ).set_index("my_index")
+
+    pd.testing.assert_frame_equal(data, expected_data)
+
+  def test_loading_data_with_only_column_names_returns_expected_data(self):
+    spreadsheet = self.client.create("test_sheet")
+    spreadsheet.add_worksheet("Sheet2", rows=1, cols=3)
+    spreadsheet.worksheet("Sheet2").update(
+        [["my_index", "header 1", "header 2"]]
+    )
+    spreadsheet.worksheet("Sheet2").freeze(cols=1)  # Indexes are frozen columns
+
+    google_sheet = sheets.GoogleSheet.load(spreadsheet.url)
+    data = google_sheet["Sheet2"]
+
+    expected_data = pd.DataFrame(
+        columns=[
+            "my_index",
+            "header 1",
+            "header 2",
+        ]
+    ).set_index("my_index")
+
+    pd.testing.assert_frame_equal(data, expected_data)
+
   def test_writing_data_writes_to_sheet(self):
     google_sheet = sheets.GoogleSheet.new("test_sheet")
     data = pd.DataFrame({
