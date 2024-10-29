@@ -24,6 +24,7 @@ from copycat.ui import new_instance_page
 from copycat.ui import prepare_data_page
 from copycat.ui import setup_page
 from copycat.ui import states
+from copycat.ui import style_guide_page
 from copycat.ui import styles
 from copycat.ui import sub_pages
 
@@ -43,6 +44,9 @@ all_sub_pages.add_page(
     new_instance_page.new_instance,
     nav_text="New Copycat Instance",
     nav_icon="smart_toy",
+)
+all_sub_pages.add_page(
+    style_guide_page.style_guide, nav_text="Style Guide", nav_icon="edit_note"
 )
 
 

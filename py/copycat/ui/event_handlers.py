@@ -485,6 +485,7 @@ def save_copycat_to_sheet(
     sheet: The Google Sheet to save the model to.
     model: The Copycat model to save.
   """
+  send_log("Saving Copycat instance to sheet")
   model_params = model.to_dict()
 
   # Store the exemplar ads in their own sheet
@@ -502,6 +503,37 @@ def save_copycat_to_sheet(
       "params_json": json.dumps(model_params),
   }])
   sheet["READ ONLY: Copycat Instance Params"] = other_params
+
+
+def load_copycat_from_sheet(sheet: sheets.GoogleSheet) -> copycat.Copycat:
+  """Loads a Copycat instance from the Google Sheet.
+
+  The instance is loaded from two tabs:
+    - READ ONLY: Training Ad Exemplars: Contains the exemplar ads.
+    - READ ONLY: Copycat Instance Params: Contains the other model parameters.
+
+  Args:
+    sheet: The Google Sheet to load the instance from.
+
+  Returns:
+    The Copycat instance.
+  """
+  send_log("Loading Copycat instance from sheet")
+  instance_json = sheet["READ ONLY: Copycat Instance Params"].loc[
+      0, "params_json"
+  ]
+  instance_dict = json.loads(instance_json)
+
+  ad_exemplars = sheet["READ ONLY: Training Ad Exemplars"]
+  ad_exemplars["embeddings"] = ad_exemplars["embeddings"].apply(
+      lambda x: list(map(float, x.split(", ")))
+  )
+  ad_exemplars = data_utils.collapse_headlines_and_descriptions(ad_exemplars)
+  ad_exemplars_dict = ad_exemplars.to_dict(orient="tight")
+
+  instance_dict["ad_copy_vectorstore"]["ad_exemplars"] = ad_exemplars_dict
+  copycat_instance = copycat.Copycat.from_dict(instance_dict)
+  return copycat_instance
 
 
 def build_new_copycat_instance(event: me.ClickEvent):
@@ -581,3 +613,50 @@ def build_new_copycat_instance(event: me.ClickEvent):
   state.has_copycat_instance = True
 
   send_log("Copycat instance stored in google sheet.")
+
+
+def generate_style_guide(event: me.ClickEvent):
+  """Generates a style guide from the Google Sheet.
+
+  The style guide is generated using the parameters from the Google Sheet
+  and the CopycatParamsState. The style guide is then saved to the Google Sheet.
+
+  Args:
+    event: The click event to handle.
+  """
+  send_log("Generating style guide")
+  state = me.state(states.AppState)
+  params = me.state(states.CopycatParamsState)
+  sheet = sheets.GoogleSheet.load(state.google_sheet_url)
+
+  vertexai.init(
+      project=params.vertex_ai_project_id,
+      location=params.vertex_ai_location,
+  )
+
+  copycat_instance = load_copycat_from_sheet(sheet)
+
+  send_log("Preparing to generate style guide")
+  style_guide_generator = copycat.StyleGuideGenerator()
+  if params.style_guide_files_uri:
+    send_log(
+        f"Checking for files in the GCP bucket {params.style_guide_files_uri}"
+    )
+    style_guide_generator.get_all_files(params.style_guide_files_uri)
+
+  send_log("Generating style guide")
+  model_response = style_guide_generator.generate_style_guide(
+      brand_name=params.company_name,
+      ad_copy_vectorstore=copycat_instance.ad_copy_vectorstore,
+      additional_style_instructions=params.style_guide_additional_instructions,
+      model_name=params.style_guide_chat_model_name,
+      safety_settings=copycat.ALL_SAFETY_SETTINGS_ONLY_HIGH,
+      temperature=params.style_guide_temperature,
+      top_k=params.style_guide_top_k,
+      top_p=params.style_guide_top_p,
+  )
+
+  params.style_guide = model_response.candidates[0].content.text
+  send_log("Style guide generated")
+
+  save_params_to_google_sheet(event)
