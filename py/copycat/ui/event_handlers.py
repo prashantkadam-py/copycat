@@ -327,6 +327,7 @@ def validate_sheet(event: me.ClickEvent) -> None:
       "Extra Instructions for New Ads": 0,
   }
 
+  state.google_sheet_is_valid = True
   for sheet_name in [
       "Training Ads",
       "New Keywords",
@@ -339,18 +340,16 @@ def validate_sheet(event: me.ClickEvent) -> None:
           f"VALIDATION FAILED: {sheet_name} sheet not found.", logging.ERROR
       )
       state.google_sheet_is_valid = False
-      return
 
     worksheet = sheet[sheet_name]
     actual_index_names = list(worksheet.index.names)
     if required_index_names != actual_index_names:
       send_log(
-          f"Sheet not valid: {sheet_name} requires index columns:"
+          f"VALIDATION FAILED: {sheet_name} requires index columns:"
           f" {required_index_names}, but found {actual_index_names}.",
           logging.ERROR,
       )
       state.google_sheet_is_valid = False
-      return
 
     actual_columns = set(worksheet.columns.values.tolist())
     extra_columns = actual_columns - required_columns[sheet_name]
@@ -358,12 +357,11 @@ def validate_sheet(event: me.ClickEvent) -> None:
 
     if missing_columns:
       send_log(
-          f"Sheet not valid: Missing columns in {sheet_name}:"
+          f"VALIDATION FAILED: Missing columns in {sheet_name}:"
           f" {missing_columns}",
           logging.ERROR,
       )
       state.google_sheet_is_valid = False
-      return
     else:
       send_log(f"All required columns in {sheet_name}")
 
@@ -373,12 +371,11 @@ def validate_sheet(event: me.ClickEvent) -> None:
     n_rows = len(worksheet)
     if n_rows < min_rows[sheet_name]:
       send_log(
-          f"Sheet not valid: {sheet_name} sheet has fewer than the minimum"
+          f"VALIDATION FAILED: {sheet_name} sheet has fewer than the minimum"
           f" number of rows: min={min_rows[sheet_name]}.",
           logging.ERROR,
       )
       state.google_sheet_is_valid = False
-      return
     else:
       send_log(f"{sheet_name} has {n_rows:,} rows")
 
@@ -394,5 +391,7 @@ def validate_sheet(event: me.ClickEvent) -> None:
   send_log(f"Training Ads have up to {n_description_columns} descriptions.")
 
   # Completed validation
-  send_log("Validation complete: Google Sheet is valid")
-  state.google_sheet_is_valid = True
+  if state.google_sheet_is_valid:
+    send_log("VALIDATION COMPLETED: Google Sheet is valid")
+  else:
+    send_log("VALIDATION COMPLETED: Google Sheet is invalid", logging.ERROR)
