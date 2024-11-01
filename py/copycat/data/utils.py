@@ -14,7 +14,7 @@
 
 """Utility functions for working with data."""
 
-from typing import Any, Callable
+from typing import Any, Callable, Generator
 
 import pandas as pd
 
@@ -156,3 +156,33 @@ def explode_headlines_and_descriptions(data: pd.DataFrame) -> pd.DataFrame:
   )
 
   return output_data
+
+
+def iterate_over_batches(
+    data: pd.DataFrame, batch_size: int, limit_rows: int | None = None
+) -> Generator[pd.DataFrame, None, None]:
+  """Iterates over batches of data.
+
+  Args:
+    data: The input DataFrame.
+    batch_size: The size of each batch.
+    limit_rows: The maximum number of rows to iterate over. If None, all rows
+      will be iterated over.
+
+  Yields:
+    A generator that yields batches of data.
+  """
+  if limit_rows is None or limit_rows > len(data):
+    limit_rows = len(data)
+
+  n_regular_batches = limit_rows // batch_size
+  final_batch_size = limit_rows % batch_size
+
+  for i in range(n_regular_batches):
+    yield data.iloc[i * batch_size : (i + 1) * batch_size]
+
+  if final_batch_size:
+    yield data.iloc[
+        n_regular_batches * batch_size : n_regular_batches * batch_size
+        + final_batch_size
+    ]

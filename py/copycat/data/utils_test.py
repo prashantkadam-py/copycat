@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import os
+
 from absl.testing import absltest
 from absl.testing import parameterized
 import pandas as pd
@@ -163,6 +165,37 @@ class ExplodeAndCollapseHeadlinesAndDescriptionsTest(parameterized.TestCase):
     data[column_name] = ["a", "b"]  # Column does not contain lists.
     with self.assertRaises(ValueError):
       utils.explode_headlines_and_descriptions(data)
+
+
+class IterateOverBatchesTest(parameterized.TestCase):
+
+  def test_iterate_over_batches(self):
+    data = pd.DataFrame({"a": [1, 2, 3, 4, 5, 6, 7]})
+    batches = list(utils.iterate_over_batches(data, batch_size=3))
+
+    self.assertLen(batches, 3)
+    pd.testing.assert_frame_equal(batches[0], data.iloc[:3])
+    pd.testing.assert_frame_equal(batches[1], data.iloc[3:6])
+    pd.testing.assert_frame_equal(batches[2], data.iloc[6:7])
+
+  def test_iterate_over_batches_with_limit_rows(self):
+    data = pd.DataFrame({"a": [1, 2, 3, 4, 5, 6, 7]})
+    batches = list(utils.iterate_over_batches(data, batch_size=3, limit_rows=5))
+
+    self.assertLen(batches, 2)
+    pd.testing.assert_frame_equal(batches[0], data.iloc[:3])
+    pd.testing.assert_frame_equal(batches[1], data.iloc[3:5])
+
+  def test_iterate_over_batches_with_too_large_limit_rows(self):
+    data = pd.DataFrame({"a": [1, 2, 3, 4, 5, 6, 7]})
+    batches = list(
+        utils.iterate_over_batches(data, batch_size=3, limit_rows=20)
+    )
+
+    self.assertLen(batches, 3)
+    pd.testing.assert_frame_equal(batches[0], data.iloc[:3])
+    pd.testing.assert_frame_equal(batches[1], data.iloc[3:6])
+    pd.testing.assert_frame_equal(batches[2], data.iloc[6:7])
 
 
 if __name__ == "__main__":
