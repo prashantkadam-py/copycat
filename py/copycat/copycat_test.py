@@ -1331,6 +1331,205 @@ class CopycatTest(parameterized.TestCase):
         expected_final_message,
     )
 
+  @testing_utils.PatchGenerativeModel(
+      response=(
+          '{"headlines": ["generated headline 1", "generated headline 2"],'
+          ' "descriptions": ["generated description"]}'
+      )
+  )
+  def test_generate_new_ad_copy_for_dataframe_returns_expected_response(
+      self,
+      generative_model_patcher,
+  ):
+    data = pd.DataFrame({
+        "keywords": ["my keyword 1, my keyword 2", "my keyword 3"],
+        "keywords_specific_instructions": [
+            "Some keyword specific instructions.",
+            "",
+        ],
+        "existing_headlines": [["existing headline 1"], []],
+        "existing_descriptions": [["existing description 1"], []],
+    })
+
+    copycat_instance = copycat.Copycat.create_from_pandas(
+        training_data=self.training_data(20),
+        embedding_model_name="text-embedding-004",
+        ad_format="text_ad",
+        vectorstore_exemplar_selection_method="random",
+    )
+    response_series = copycat_instance.generate_new_ad_copy_for_dataframe(
+        data,
+        style_guide="This is my style guide.",
+        num_in_context_examples=2,
+        system_instruction_kwargs=dict(
+            company_name="My company",
+            language="english",
+        ),
+    )
+
+    for response in response_series:
+      # I don't want to test the similarity metrics here, so I'm just setting
+      # them to None.
+      response.evaluation_results.style_similarity = None
+      response.evaluation_results.keyword_similarity = None
+
+    expected_response_series = pd.Series([
+        copycat.CopycatResponse(
+            google_ad=google_ads.GoogleAd(
+                headlines=[
+                    "existing headline 1",
+                    "generated headline 1",
+                    "generated headline 2",
+                ],
+                descriptions=[
+                    "existing description 1",
+                    "generated description",
+                ],
+            ),
+            keywords="my keyword 1, my keyword 2",
+            evaluation_results=copycat.EvaluationResults(
+                errors=[],
+                warnings=[],
+                headlines_are_memorised=False,
+                descriptions_are_memorised=False,
+                style_similarity=None,
+                keyword_similarity=None,
+            ),
+        ),
+        copycat.CopycatResponse(
+            google_ad=google_ads.GoogleAd(
+                headlines=["generated headline 1", "generated headline 2"],
+                descriptions=["generated description"],
+            ),
+            keywords="my keyword 3",
+            evaluation_results=copycat.EvaluationResults(
+                errors=[],
+                warnings=[],
+                headlines_are_memorised=False,
+                descriptions_are_memorised=False,
+                style_similarity=None,
+                keyword_similarity=None,
+            ),
+        ),
+    ])
+
+    pd.testing.assert_series_equal(response_series, expected_response_series)
+
+  @testing_utils.PatchGenerativeModel(
+      response=(
+          '{"headlines": ["generated headline 1", "generated headline 2"],'
+          ' "descriptions": ["generated description"]}'
+      )
+  )
+  def test_generate_new_ad_copy_for_dataframe_returns_expected_response_if_only_keywords_column_is_provided(
+      self,
+      generative_model_patcher,
+  ):
+    data = pd.DataFrame({
+        "keywords": ["my keyword 1, my keyword 2", "my keyword 3"],
+    })
+
+    copycat_instance = copycat.Copycat.create_from_pandas(
+        training_data=self.training_data(20),
+        embedding_model_name="text-embedding-004",
+        ad_format="text_ad",
+        vectorstore_exemplar_selection_method="random",
+    )
+    response_series = copycat_instance.generate_new_ad_copy_for_dataframe(
+        data,
+        style_guide="This is my style guide.",
+        num_in_context_examples=2,
+        system_instruction_kwargs=dict(
+            company_name="My company",
+            language="english",
+        ),
+    )
+
+    for response in response_series:
+      # I don't want to test the similarity metrics here, so I'm just setting
+      # them to None.
+      response.evaluation_results.style_similarity = None
+      response.evaluation_results.keyword_similarity = None
+
+    expected_response_series = pd.Series([
+        copycat.CopycatResponse(
+            google_ad=google_ads.GoogleAd(
+                headlines=[
+                    "generated headline 1",
+                    "generated headline 2",
+                ],
+                descriptions=[
+                    "generated description",
+                ],
+            ),
+            keywords="my keyword 1, my keyword 2",
+            evaluation_results=copycat.EvaluationResults(
+                errors=[],
+                warnings=[],
+                headlines_are_memorised=False,
+                descriptions_are_memorised=False,
+                style_similarity=None,
+                keyword_similarity=None,
+            ),
+        ),
+        copycat.CopycatResponse(
+            google_ad=google_ads.GoogleAd(
+                headlines=["generated headline 1", "generated headline 2"],
+                descriptions=["generated description"],
+            ),
+            keywords="my keyword 3",
+            evaluation_results=copycat.EvaluationResults(
+                errors=[],
+                warnings=[],
+                headlines_are_memorised=False,
+                descriptions_are_memorised=False,
+                style_similarity=None,
+                keyword_similarity=None,
+            ),
+        ),
+    ])
+
+    pd.testing.assert_series_equal(response_series, expected_response_series)
+
+  @testing_utils.PatchGenerativeModel(
+      response=(
+          '{"headlines": ["generated headline 1", "generated headline 2"],'
+          ' "descriptions": ["generated description"]}'
+      )
+  )
+  def test_generate_new_ad_copy_for_dataframe_raises_exception_if_keywords_column_is_missing(
+      self,
+      generative_model_patcher,
+  ):
+    data = pd.DataFrame({
+        "keywords_specific_instructions": [
+            "Some keyword specific instructions.",
+            "",
+        ],
+        "existing_headlines": [["existing headline 1"], []],
+        "existing_descriptions": [["existing description 1"], []],
+    })
+
+    copycat_instance = copycat.Copycat.create_from_pandas(
+        training_data=self.training_data(20),
+        embedding_model_name="text-embedding-004",
+        ad_format="text_ad",
+        vectorstore_exemplar_selection_method="random",
+    )
+    with self.assertRaisesWithLiteralMatch(
+        ValueError,
+        "The dataframe does not contain the required column: keywords",
+    ):
+      copycat_instance.generate_new_ad_copy_for_dataframe(
+          data,
+          style_guide="This is my style guide.",
+          num_in_context_examples=2,
+          system_instruction_kwargs=dict(
+              company_name="My company",
+              language="english",
+          ),
+      )
+
 
 if __name__ == "__main__":
   absltest.main()

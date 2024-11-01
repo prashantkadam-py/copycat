@@ -17,10 +17,11 @@
 Contains the code to generate copycat ad copies.
 """
 
+from collections.abc import Mapping
 import dataclasses
 import json
 import logging
-from typing import Any
+from typing import Any, Callable
 import warnings
 
 from vertexai import generative_models
@@ -30,8 +31,8 @@ import pydantic
 from copycat import ad_copy_evaluator
 from copycat import ad_copy_generator
 from copycat import google_ads
-from copycat import style_guide
 from copycat import keyword_organiser
+from copycat import style_guide
 
 GoogleAd = google_ads.GoogleAd
 GoogleAdFormat = google_ads.GoogleAdFormat
@@ -818,3 +819,95 @@ class Copycat:
       )
 
     return evaluated_responses
+
+  def generate_new_ad_copy_for_dataframe(
+      self,
+      data: pd.DataFrame,
+      *,
+      keywords_column: str = "keywords",
+      keywords_specific_instructions_column: (
+          str
+      ) = "keywords_specific_instructions",
+      existing_headlines_column: str = "existing_headlines",
+      existing_descriptions_column: str = "existing_descriptions",
+      **static_params: Any,
+  ) -> pd.Series:
+    """Applies the generate new ad copy function to a dataframe.
+
+    This will generate a new ad copy for each row in the dataframe, using the
+    keywords, keywords_specific_instructions, existing_headlines and
+    existing_descriptions columns from that row. All other parameters are
+    static and will be passed to the generate_new_ad_copy function.
+
+    Args:
+      data: The dataframe to apply the generate new ad copy function to.
+      keywords_column: The name of the column containing the keywords.
+      keywords_specific_instructions_column: The name of the column containing
+        the keywords specific instructions. If the column is not present then
+        None will be used as the value.
+      existing_headlines_column: The name of the column containing the existing
+        headlines. If the column is not present then None will be used as the
+        value.
+      existing_descriptions_column: The name of the column containing the
+        existing descriptions. If the column is not present then None will be
+        used as the value.
+      **static_params: The static parameters to pass to the generate new ad copy
+        function. See the generate_new_ad_copy function for the list of
+        available parameters.
+
+    Returns:
+      A series of CopycatResponses.
+
+    Raises:
+      ValueError: If the dataframe does not contain the required keywords
+        column.
+    """
+    if keywords_column in data.columns:
+      keywords = data[keywords_column]
+    else:
+      LOGGER.error(
+          "The dataframe does not contain the required column: %s",
+          keywords_column,
+      )
+      raise ValueError(
+          "The dataframe does not contain the required column:"
+          f" {keywords_column}"
+      )
+
+    if keywords_specific_instructions_column in data.columns:
+      keywords_specific_instructions = data[
+          keywords_specific_instructions_column
+      ]
+    else:
+      LOGGER.warning(
+          "The dataframe does not contain the optional column: %s",
+          keywords_specific_instructions_column,
+      )
+      keywords_specific_instructions = [None] * len(keywords)
+
+    if existing_headlines_column in data.columns:
+      existing_headlines = data[existing_headlines_column]
+    else:
+      LOGGER.warning(
+          "The dataframe does not contain the optional column: %s",
+          existing_headlines_column,
+      )
+      existing_headlines = [None] * len(keywords)
+
+    if existing_descriptions_column in data.columns:
+      existing_descriptions = data[existing_descriptions_column]
+    else:
+      LOGGER.warning(
+          "The dataframe does not contain the optional column: %s",
+          existing_descriptions_column,
+      )
+      existing_descriptions = [None] * len(keywords)
+
+    generated_responses = self.generate_new_ad_copy(
+        keywords=keywords,
+        keywords_specific_instructions=keywords_specific_instructions,
+        existing_headlines=existing_headlines,
+        existing_descriptions=existing_descriptions,
+        **static_params,
+    )
+    return pd.Series(generated_responses, index=data.index)
