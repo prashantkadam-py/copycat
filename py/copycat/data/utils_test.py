@@ -12,8 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import os
-
 from absl.testing import absltest
 from absl.testing import parameterized
 import pandas as pd
@@ -196,6 +194,258 @@ class IterateOverBatchesTest(parameterized.TestCase):
     pd.testing.assert_frame_equal(batches[0], data.iloc[:3])
     pd.testing.assert_frame_equal(batches[1], data.iloc[3:6])
     pd.testing.assert_frame_equal(batches[2], data.iloc[6:7])
+
+
+class ConstructGenerationDataTest(parameterized.TestCase):
+
+  def test_construct_generation_data_with_new_keywords_data_only(self):
+    new_keywords_data = pd.DataFrame({
+        "index_column_1": ["a", "a", "b", "b"],
+        "index_column_2": ["c", "d", "d", "d"],
+        "keyword": ["keyword 1", "keyword 2", "keyword 3", "keyword 4"],
+    }).set_index(["index_column_1", "index_column_2"])
+
+    actual = utils.construct_generation_data(
+        new_keywords_data=new_keywords_data
+    )
+
+    expected = pd.DataFrame({
+        "index_column_1": ["a", "a", "b"],
+        "index_column_2": ["c", "d", "d"],
+        "version": ["1", "1", "1"],
+        "keywords": ["keyword 1", "keyword 2", "keyword 3, keyword 4"],
+    }).set_index(["index_column_1", "index_column_2", "version"])
+
+    pd.testing.assert_frame_equal(actual, expected, check_like=True)
+
+  def test_construct_generation_data_with_new_keywords_data_only_multiple_versions(
+      self,
+  ):
+    new_keywords_data = pd.DataFrame({
+        "index_column_1": ["a", "a", "b", "b"],
+        "index_column_2": ["c", "d", "d", "d"],
+        "keyword": ["keyword 1", "keyword 2", "keyword 3", "keyword 4"],
+    }).set_index(["index_column_1", "index_column_2"])
+
+    actual = utils.construct_generation_data(
+        new_keywords_data=new_keywords_data,
+        n_versions=2,
+    )
+
+    expected = pd.DataFrame({
+        "index_column_1": ["a", "a", "a", "a", "b", "b"],
+        "index_column_2": ["c", "c", "d", "d", "d", "d"],
+        "version": ["1", "2", "1", "2", "1", "2"],
+        "keywords": [
+            "keyword 1",
+            "keyword 1",
+            "keyword 2",
+            "keyword 2",
+            "keyword 3, keyword 4",
+            "keyword 3, keyword 4",
+        ],
+    }).set_index(["index_column_1", "index_column_2", "version"])
+
+    pd.testing.assert_frame_equal(actual, expected, check_like=True)
+
+  def test_construct_generation_data_with_existing_generations_data(self):
+    new_keywords_data = pd.DataFrame({
+        "index_column_1": ["a", "a", "b", "b"],
+        "index_column_2": ["c", "d", "d", "d"],
+        "keyword": ["keyword 1", "keyword 2", "keyword 3", "keyword 4"],
+    }).set_index(["index_column_1", "index_column_2"])
+
+    existing_generations_data = pd.DataFrame({
+        "index_column_1": ["a", "a"],
+        "index_column_2": ["c", "d"],
+        "version": ["1", "1"],
+        "existing_headlines": [["headline 1"], ["headline 2"]],
+        "existing_descriptions": [
+            ["description 1"],
+            ["description 2"],
+        ],
+    }).set_index(["index_column_1", "index_column_2", "version"])
+
+    actual = utils.construct_generation_data(
+        new_keywords_data=new_keywords_data,
+        existing_generations_data=existing_generations_data,
+    )
+
+    expected = pd.DataFrame({
+        "index_column_1": ["a", "a", "b"],
+        "index_column_2": ["c", "d", "d"],
+        "version": ["1", "1", "1"],
+        "keywords": ["keyword 1", "keyword 2", "keyword 3, keyword 4"],
+        "existing_headlines": [["headline 1"], ["headline 2"], []],
+        "existing_descriptions": [
+            ["description 1"],
+            ["description 2"],
+            [],
+        ],
+    }).set_index(["index_column_1", "index_column_2", "version"])
+
+    pd.testing.assert_frame_equal(actual, expected, check_like=True)
+
+  def test_construct_generation_data_raises_value_error_if_existing_generations_data_not_unique(
+      self,
+  ):
+    new_keywords_data = pd.DataFrame({
+        "index_column_1": ["a", "a", "b", "b"],
+        "index_column_2": ["c", "d", "d", "d"],
+        "keyword": ["keyword 1", "keyword 2", "keyword 3", "keyword 4"],
+    }).set_index(["index_column_1", "index_column_2"])
+
+    existing_generations_data = pd.DataFrame({
+        "index_column_1": ["a", "a"],
+        "index_column_2": ["c", "c"],
+        "version": ["1", "1"],
+        "existing_headlines": [["headline 1"], ["headline 2"]],
+        "existing_descriptions": [
+            ["description 1"],
+            ["description 2"],
+        ],
+    }).set_index(["index_column_1", "index_column_2", "version"])
+
+    with self.assertRaisesWithLiteralMatch(
+        ValueError,
+        "The index columns of the existing_generations_data are not unique,"
+        " cannot merge with the new keywords data.",
+    ):
+      utils.construct_generation_data(
+          new_keywords_data=new_keywords_data,
+          existing_generations_data=existing_generations_data,
+      )
+
+  def test_construct_generation_data_with_additional_instructions(self):
+    new_keywords_data = pd.DataFrame({
+        "index_column_1": ["a", "a", "b", "b"],
+        "index_column_2": ["c", "d", "d", "d"],
+        "keyword": ["keyword 1", "keyword 2", "keyword 3", "keyword 4"],
+    }).set_index(["index_column_1", "index_column_2"])
+
+    additional_instructions_data = pd.DataFrame({
+        "index_column_1": ["a", "a", "a", "a"],
+        "index_column_2": ["c", "d", "c", "c"],
+        "version": ["1", "1", "2", "2"],
+        "additional_instructions": [
+            "instruction 1",
+            "instruction 2",
+            "instruction 3",
+            "instruction 4",
+        ],
+    }).set_index(["index_column_1", "index_column_2", "version"])
+
+    actual = utils.construct_generation_data(
+        new_keywords_data=new_keywords_data,
+        additional_instructions_data=additional_instructions_data,
+        n_versions=2,
+    )
+
+    expected = pd.DataFrame({
+        "index_column_1": ["a", "a", "a", "a", "b", "b"],
+        "index_column_2": ["c", "c", "d", "d", "d", "d"],
+        "version": ["1", "2", "1", "2", "1", "2"],
+        "keywords": [
+            "keyword 1",
+            "keyword 1",
+            "keyword 2",
+            "keyword 2",
+            "keyword 3, keyword 4",
+            "keyword 3, keyword 4",
+        ],
+        "additional_instructions": [
+            "instruction 1",
+            "instruction 3\ninstruction 4",
+            "instruction 2",
+            "",
+            "",
+            "",
+        ],
+    }).set_index(["index_column_1", "index_column_2", "version"])
+
+    pd.testing.assert_frame_equal(actual, expected, check_like=True)
+
+  def test_construct_generation_data_with_additional_instructions_with_all(
+      self,
+  ):
+    new_keywords_data = pd.DataFrame({
+        "index_column_1": ["a", "a", "b", "b"],
+        "index_column_2": ["c", "d", "d", "d"],
+        "keyword": ["keyword 1", "keyword 2", "keyword 3", "keyword 4"],
+    }).set_index(["index_column_1", "index_column_2"])
+
+    additional_instructions_data = pd.DataFrame({
+        "index_column_1": [
+            "a",
+            "__ALL__",
+            "b",
+            "__ALL__",
+            "a",
+            "__ALL__",
+            "b",
+            "__ALL__",
+        ],
+        "index_column_2": [
+            "c",
+            "d",
+            "__ALL__",
+            "__ALL__",
+            "c",
+            "d",
+            "__ALL__",
+            "__ALL__",
+        ],
+        "version": [
+            "1",
+            "1",
+            "1",
+            "1",
+            "__ALL__",
+            "__ALL__",
+            "__ALL__",
+            "__ALL__",
+        ],
+        "additional_instructions": [
+            "(a,c,1)",
+            "(all,d,1)",
+            "(b,all,1)",
+            "(all,all,1)",
+            "(a,c,all)",
+            "(all,d,all)",
+            "(b,all,all)",
+            "(all,all,all)",
+        ],
+    }).set_index(["index_column_1", "index_column_2", "version"])
+
+    actual = utils.construct_generation_data(
+        new_keywords_data=new_keywords_data,
+        additional_instructions_data=additional_instructions_data,
+        n_versions=2,
+    )
+
+    expected = pd.DataFrame({
+        "index_column_1": ["a", "a", "a", "a", "b", "b"],
+        "index_column_2": ["c", "c", "d", "d", "d", "d"],
+        "version": ["1", "2", "1", "2", "1", "2"],
+        "keywords": [
+            "keyword 1",
+            "keyword 1",
+            "keyword 2",
+            "keyword 2",
+            "keyword 3, keyword 4",
+            "keyword 3, keyword 4",
+        ],
+        "additional_instructions": [
+            "(a,c,1)\n(a,c,all)\n(all,all,1)\n(all,all,all)",
+            "(a,c,all)\n(all,all,all)",
+            "(all,all,1)\n(all,all,all)\n(all,d,1)\n(all,d,all)",
+            "(all,all,all)\n(all,d,all)",
+            "(all,all,1)\n(all,all,all)\n(all,d,1)\n(all,d,all)\n(b,all,1)\n(b,all,all)",
+            "(all,all,all)\n(all,d,all)\n(b,all,all)",
+        ],
+    }).set_index(["index_column_1", "index_column_2", "version"])
+
+    pd.testing.assert_frame_equal(actual, expected, check_like=True)
 
 
 if __name__ == "__main__":

@@ -14,9 +14,16 @@
 
 """Utility functions for working with data."""
 
+import itertools
+import logging
 from typing import Any, Callable, Generator
 
+import numpy as np
 import pandas as pd
+
+
+LOGGER = logging.getLogger(__name__)
+LOGGER.setLevel(logging.INFO)
 
 
 def collapse_headlines_and_descriptions(
@@ -186,3 +193,234 @@ def iterate_over_batches(
         n_regular_batches * batch_size : n_regular_batches * batch_size
         + final_batch_size
     ]
+
+
+def _join_additional_instructions_data(
+    additional_instructions_data: pd.DataFrame,
+    target_data: pd.DataFrame,
+    additional_instructions_column: str,
+) -> pd.DataFrame:
+  """Prepares the additional instructions data for merging.
+
+  The additional instructions are joined onto the target data on the join
+  columns. If the value of a join column in the additional instructions data is
+  set to __ALL__, then it will be merged with all values of that column in the
+  target data. If there are duplicates in the additional instructions data then
+  they are joined together on separate lines.
+
+  Args:
+    additional_instructions_data: The additional instructions data.
+    target_data: The target data to join the additional instructions data to.
+    join_columns: The columns to join on.
+    additional_instructions_column: The column in the additional instructions
+      data that contains the additional instructions.
+
+  Returns:
+    A new DataFrame with the additional instructions data joined onto the target
+    data.
+  """
+  join_columns = list(additional_instructions_data.index.names)
+  complete_index = target_data.reset_index()[join_columns].copy()
+  additional_instructions_data = additional_instructions_data.reset_index()
+
+  exploded_additional_instructions = []
+  for n_join_columns in range(len(join_columns) + 1):
+    for selected_join_columns in itertools.combinations(
+        join_columns, n_join_columns
+    ):
+      selected_join_columns = list(selected_join_columns)
+      unselected_join_columns = [
+          col for col in join_columns if col not in selected_join_columns
+      ]
+      mask = np.array([True] * len(additional_instructions_data))
+      if selected_join_columns:
+        mask &= np.all(
+            additional_instructions_data[selected_join_columns].values
+            != "__ALL__",
+            axis=1,
+        )
+      if unselected_join_columns:
+        mask &= np.all(
+            additional_instructions_data[unselected_join_columns].values
+            == "__ALL__",
+            axis=1,
+        )
+
+      if not mask.any():
+        continue
+
+      data_to_merge = additional_instructions_data.loc[
+          mask, selected_join_columns + [additional_instructions_column]
+      ]
+      if selected_join_columns:
+        exploded_additional_instructions.append(
+            complete_index.merge(
+                data_to_merge,
+                on=selected_join_columns,
+                how="inner",
+            )
+        )
+      else:
+        exploded_additional_instructions.append(
+            complete_index.merge(
+                data_to_merge,
+                how="cross",
+            )
+        )
+
+  final_additional_instructions = (
+      pd.concat(exploded_additional_instructions)
+      .groupby(join_columns)
+      .agg(
+          additional_instructions=(
+              additional_instructions_column,
+              lambda x: "\n".join(sorted(list(set(x)))),
+          )
+      )
+  )
+  merged_data = target_data.join(
+      final_additional_instructions,
+      how="left",
+  )
+  merged_data[additional_instructions_column] = merged_data[
+      additional_instructions_column
+  ].fillna("")
+  return merged_data
+
+
+def construct_generation_data(
+    *,
+    new_keywords_data: pd.DataFrame,
+    additional_instructions_data: pd.DataFrame | None = None,
+    existing_generations_data: pd.DataFrame | None = None,
+    keyword_column: str = "keyword",
+    additional_instructions_column: str = "additional_instructions",
+    existing_headlines_column: str = "existing_headlines",
+    existing_descriptions_column: str = "existing_descriptions",
+    version_column: str = "version",
+    n_versions: int = 1,
+) -> pd.DataFrame:
+  """Constructs the generation data.
+
+  The new keywords data should contain the following columns:
+    - The columns in the index_columns list.
+    - The column specified by the keyword_column, containing a single keyword
+      per row.
+
+  (Optionl) The additional instructions data should contain the following
+  columns:
+    - The columns in the index_columns list.
+    - The column specified by the version_column, containing the version number
+    of the ad.
+    - The column specified by the additional_instructions_column, containing a
+      single additional instruction per row.
+  For the additional instructions data, if any of the values of the index
+  columns or the version column is set to __ALL__, then it will be merged with
+  all values of those columns in the target data.
+
+  (Optional) The existing generations data should contain the following columns:
+    - The columns in the index_columns list.
+    - The column specified by the version_column, containing the version number
+    of the ad.
+    - The column specified by the existing_headlines_column, containing a list
+      of previously generated headlines.
+    - The column specified by the existing_descriptions_column, containing a
+      list of previously generated descriptions.
+  For the existing generations data, the index and versions columns must be
+  unique.
+
+  Args:
+    new_keywords_data: The new keywords data.
+    index_columns: The columns to index the data by. These should uniquely
+      identify a single new ad to generate.
+    additional_instructions_data: The additional instructions data.
+    existing_generations_data: The existing generations data.
+    keyword_column: The column in the new keywords data that contains the
+      keywords.
+    additional_instructions_column: The column in the additional instructions
+      data that contains the additional instructions.
+    existing_headlines_column: The column in the existing generations data that
+      contains the existing headlines.
+    existing_descriptions_column: The column in the existing generations data
+      that contains the existing descriptions.
+    version_column: The column in the additional instructions data and the
+      existing generations data that contains the version number of the ad.
+    n_versions: The number of versions to generate for each new ad.
+
+  Returns:
+    A new DataFrame with the generation data.
+
+  Raises:
+    ValueError: If the index columns are not unique in the existing generations
+    data.
+  """
+  index_columns = list(new_keywords_data.index.names)
+  join_columns = index_columns + [version_column]
+
+  generation_data = (
+      new_keywords_data.reset_index()
+      .groupby(index_columns)
+      .agg(keywords=(keyword_column, ", ".join))
+      .reset_index()
+  )
+  generation_data[version_column] = [list(range(1, n_versions + 1))] * len(
+      generation_data
+  )
+
+  generation_data = generation_data.explode(version_column, ignore_index=True)
+  generation_data[version_column] = generation_data[version_column].astype(str)
+  generation_data.set_index(join_columns, inplace=True)
+
+  if existing_generations_data is not None:
+    if set(existing_generations_data.index.names) != set(join_columns):
+      error_message = (
+          "The index columns of the existing_generations_data do not match the"
+          f" expected columns, expected: {join_columns}, got:"
+          f" {existing_generations_data.index.names}"
+      )
+      LOGGER.error(error_message)
+      raise ValueError(error_message)
+
+    if not existing_generations_data.index.is_unique:
+      error_message = (
+          "The index columns of the existing_generations_data are not unique,"
+          " cannot merge with the new keywords data."
+      )
+      LOGGER.error(error_message)
+      raise ValueError(error_message)
+
+    generation_data = generation_data.join(
+        existing_generations_data[
+            [existing_headlines_column, existing_descriptions_column]
+        ],
+        how="left",
+    )
+    generation_data[
+        [existing_headlines_column, existing_descriptions_column]
+    ] = (
+        generation_data[
+            [existing_headlines_column, existing_descriptions_column]
+        ]
+        .fillna("")
+        .map(list)
+    )
+
+  if additional_instructions_data is not None:
+    if set(additional_instructions_data.index.names) != set(join_columns):
+      error_message = (
+          "The index columns of the additional_instructions_data do not match"
+          f" the expected columns, expected: {join_columns}, got:"
+          f" {additional_instructions_data.index.names}"
+      )
+      LOGGER.error(error_message)
+      raise ValueError(error_message)
+
+    generation_data = _join_additional_instructions_data(
+        additional_instructions_data=additional_instructions_data[
+            [additional_instructions_column]
+        ],
+        target_data=generation_data,
+        additional_instructions_column=additional_instructions_column,
+    )
+
+  return generation_data
