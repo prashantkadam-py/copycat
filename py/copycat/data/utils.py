@@ -83,7 +83,9 @@ def collapse_headlines_and_descriptions(
   return output_data
 
 
-def _explode_to_columns(output_name: str) -> Callable[[list[Any]], pd.Series]:
+def _explode_to_columns(
+    output_name: str, max_columns: int | None = None
+) -> Callable[[list[Any]], pd.Series]:
   """Returns a function that explodes a list into a Series of columns.
 
   The returned function takes a list as input and returns a Series where each
@@ -93,26 +95,46 @@ def _explode_to_columns(output_name: str) -> Callable[[list[Any]], pd.Series]:
 
   Args:
     output_name: The name of the output columns.
+    max_columns: The maximum number of columns to create. If None, then the
+      number of columns will be equal to the length of the input list.
 
   Returns:
     A function that explodes a list into a Series of columns.
+
+  Raises:
+    ValueError: If the input to the function is not a list or if the length of
+    the list is greater than the maximum number of columns.
   """
 
   def apply_explode_to_columns(list_col: list[Any]) -> pd.Series:
+    nonlocal max_columns
+    nonlocal output_name
+    if max_columns is None:
+      max_columns = len(list_col)
+    elif len(list_col) > max_columns:
+      raise ValueError(
+          "The input to the explode_to_columns function must be a list of"
+          f" length {max_columns} or less, got {len(list_col)} instead."
+      )
+
     if not isinstance(list_col, list):
       raise ValueError(
           "The input to the explode_to_columns function must be a list, got"
           f" {type(list_col)} instead."
       )
     return pd.Series(
-        list_col,
-        index=[f"{output_name} {i+1}" for i in range(len(list_col))],
+        list_col + ["--" for _ in range(max_columns - len(list_col))],
+        index=[f"{output_name} {i+1}" for i in range(max_columns)],
     )
 
   return apply_explode_to_columns
 
 
-def explode_headlines_and_descriptions(data: pd.DataFrame) -> pd.DataFrame:
+def explode_headlines_and_descriptions(
+    data: pd.DataFrame,
+    max_headlines: int | None = None,
+    max_descriptions: int | None = None,
+) -> pd.DataFrame:
   """Explodes headline and description columns into separate columns.
 
   Assumes that the headline and description columns have been collapsed into two
@@ -125,6 +147,11 @@ def explode_headlines_and_descriptions(data: pd.DataFrame) -> pd.DataFrame:
 
   Args:
     data: The input DataFrame.
+    max_headlines: The maximum number of headlines to explode. If None, then the
+      number of headlines will be equal to the length of the input list.
+    max_descriptions: The maximum number of descriptions to explode. If None,
+      then the number of descriptions will be equal to the length of the input
+      list.
 
   Returns:
     A new DataFrame with the headline and description columns exploded into
@@ -141,17 +168,28 @@ def explode_headlines_and_descriptions(data: pd.DataFrame) -> pd.DataFrame:
 
   if "headlines" in data:
     headlines = (
-        data["headlines"].apply(_explode_to_columns("Headline")).fillna("--")
+        data["headlines"]
+        .apply(_explode_to_columns("Headline", max_headlines))
+        .fillna("--")
     )
+  elif max_headlines is not None:
+    headlines = data.apply(
+        lambda x: _explode_to_columns("Headline", max_headlines)([]), axis=1
+    ).fillna("--")
   else:
     headlines = pd.DataFrame()
 
   if "descriptions" in data:
     descriptions = (
         data["descriptions"]
-        .apply(_explode_to_columns("Description"))
+        .apply(_explode_to_columns("Description", max_descriptions))
         .fillna("--")
     )
+  elif max_descriptions is not None:
+    descriptions = data.apply(
+        lambda x: _explode_to_columns("Description", max_descriptions)([]),
+        axis=1,
+    ).fillna("--")
   else:
     descriptions = pd.DataFrame()
 
@@ -211,7 +249,6 @@ def _join_additional_instructions_data(
   Args:
     additional_instructions_data: The additional instructions data.
     target_data: The target data to join the additional instructions data to.
-    join_columns: The columns to join on.
     additional_instructions_column: The column in the additional instructions
       data that contains the additional instructions.
 
@@ -282,8 +319,8 @@ def _join_additional_instructions_data(
       final_additional_instructions,
       how="left",
   )
-  merged_data[additional_instructions_column] = merged_data[
-      additional_instructions_column
+  merged_data["additional_instructions"] = merged_data[
+      "additional_instructions"
   ].fillna("")
   return merged_data
 

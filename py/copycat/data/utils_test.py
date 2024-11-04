@@ -139,6 +139,117 @@ class ExplodeAndCollapseHeadlinesAndDescriptionsTest(parameterized.TestCase):
     actual = utils.explode_headlines_and_descriptions(data)
     pd.testing.assert_frame_equal(actual, expected, check_like=True)
 
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="with_headlines_and_descriptions",
+          data=pd.DataFrame({
+              "headlines": [["a", "c", "d"], ["b"]],
+              "descriptions": [["e", "g"], ["f"]],
+              "Other column": [1, 2],
+          }),
+          expected=pd.DataFrame({
+              "Headline 1": ["a", "b"],
+              "Headline 2": ["c", "--"],
+              "Headline 3": ["d", "--"],
+              "Headline 4": ["--", "--"],
+              "Headline 5": ["--", "--"],
+              "Description 1": ["e", "f"],
+              "Description 2": ["g", "--"],
+              "Description 3": ["--", "--"],
+              "Other column": [1, 2],
+          }),
+      ),
+      dict(
+          testcase_name="with_no_headlines",
+          data=pd.DataFrame({
+              "headlines": [[], []],
+              "descriptions": [["e", "g"], ["f"]],
+              "Other column": [1, 2],
+          }),
+          expected=pd.DataFrame({
+              "Headline 1": ["--", "--"],
+              "Headline 2": ["--", "--"],
+              "Headline 3": ["--", "--"],
+              "Headline 4": ["--", "--"],
+              "Headline 5": ["--", "--"],
+              "Description 1": ["e", "f"],
+              "Description 2": ["g", "--"],
+              "Description 3": ["--", "--"],
+              "Other column": [1, 2],
+          }),
+      ),
+      dict(
+          testcase_name="with_no_descriptions",
+          data=pd.DataFrame({
+              "headlines": [["a", "c", "d"], ["b"]],
+              "descriptions": [[], []],
+              "Other column": [1, 2],
+          }),
+          expected=pd.DataFrame({
+              "Headline 1": ["a", "b"],
+              "Headline 2": ["c", "--"],
+              "Headline 3": ["d", "--"],
+              "Headline 4": ["--", "--"],
+              "Headline 5": ["--", "--"],
+              "Description 1": ["--", "--"],
+              "Description 2": ["--", "--"],
+              "Description 3": ["--", "--"],
+              "Other column": [1, 2],
+          }),
+      ),
+      dict(
+          testcase_name="with_no_headlines_or_descriptions",
+          data=pd.DataFrame({
+              "headlines": [[], []],
+              "descriptions": [[], []],
+              "Other column": [1, 2],
+          }),
+          expected=pd.DataFrame({
+              "Headline 1": ["--", "--"],
+              "Headline 2": ["--", "--"],
+              "Headline 3": ["--", "--"],
+              "Headline 4": ["--", "--"],
+              "Headline 5": ["--", "--"],
+              "Description 1": ["--", "--"],
+              "Description 2": ["--", "--"],
+              "Description 3": ["--", "--"],
+              "Other column": [1, 2],
+          }),
+      ),
+  )
+  def test_explode_headlines_and_descriptions_applies_max_headlines_and_descriptions(
+      self, data, expected
+  ):
+    actual = utils.explode_headlines_and_descriptions(
+        data, max_headlines=5, max_descriptions=3
+    )
+    pd.testing.assert_frame_equal(actual, expected, check_like=True)
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="too many headlines",
+          max_headlines=2,
+          max_descriptions=3,
+      ),
+      dict(
+          testcase_name="too many descriptions",
+          max_headlines=5,
+          max_descriptions=1,
+      ),
+  )
+  def test_explode_headlines_and_descriptions_raises_value_error_if_max_headlines_or_descriptions_too_small(
+      self, max_headlines, max_descriptions
+  ):
+    data = pd.DataFrame({
+        "headlines": [["a", "c", "d"], ["b"]],
+        "descriptions": [["e", "g"], ["f"]],
+        "Other column": [1, 2],
+    })
+    with self.assertRaises(ValueError):
+      utils.explode_headlines_and_descriptions(
+          data, max_headlines=max_headlines, max_descriptions=max_descriptions
+      )
+
   def test_explode_headlines_and_descriptions_raises_value_error_if_index_not_unique(
       self,
   ):

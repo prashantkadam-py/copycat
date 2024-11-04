@@ -38,11 +38,8 @@ class AppState:
 
 @me.stateclass
 class CopycatParamsState:
-  save_file_name: str = "copycat.cat"
-
   vertex_ai_project_id: str = ""
   vertex_ai_location: str = "us-central1"
-  google_ads_account_id: str = ""
 
   company_name: str = ""
   ad_format: str = "responsive_search_ad"
@@ -91,5 +88,6 @@ class CopycatParamsState:
   new_ads_allow_memorised_headlines: bool = False
   new_ads_allow_memorised_descriptions: bool = False
   new_ads_batch_size: int = 15
-  new_ads_generation_limit: int = 0
+  new_ads_generation_limit: int = 30
   new_ads_fill_gaps: bool = True
+  new_ads_number_of_versions: int = 1

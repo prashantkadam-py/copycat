@@ -20,7 +20,6 @@ import logging
 
 import vertexai
 import mesop as me
-import numpy as np
 import pandas as pd
 
 from copycat import copycat
@@ -660,3 +659,309 @@ def generate_style_guide(event: me.ClickEvent):
   send_log("Style guide generated")
 
   save_params_to_google_sheet(event)
+
+
+def _prepare_new_ads_for_generation(
+    sheet: sheets.GoogleSheet,
+    n_versions: int,
+    fill_gaps: bool,
+    copycat_instance: copycat.Copycat,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+  """Prepares new ads for generation.
+
+  This function prepares new ads for generation by loading the data from the
+  Google Sheet, constructing the complete data, and filtering out any ads that
+  have already been generated.
+
+  Args:
+    sheet: The Google Sheet to load the data from.
+    n_versions: The number of versions to generate for each ad.
+    fill_gaps: Whether to fill gaps in the existing generations.
+    copycat_instance: The Copycat instance to use for generation.
+
+  Returns:
+    A tuple containing the new generations data and the complete data.
+  """
+  new_keywords_data = sheet["New Keywords"]
+  additional_instructions_data = sheet["Extra Instructions for New Ads"]
+  additional_instructions_data.index = (
+      additional_instructions_data.index.set_levels(
+          additional_instructions_data.index.get_level_values("Version").astype(
+              str
+          ),
+          level="Version",
+          verify_integrity=False,
+      )
+  )
+
+  if "Generated Ads" in sheet:
+    existing_generations_data = sheet["Generated Ads"]
+    if "Headline 1" not in existing_generations_data.columns:
+      existing_generations_data = None
+  else:
+    existing_generations_data = None
+
+  if existing_generations_data is None:
+    complete_data = data_utils.construct_generation_data(
+        new_keywords_data=new_keywords_data,
+        additional_instructions_data=additional_instructions_data,
+        n_versions=n_versions,
+        keyword_column="Keyword",
+        version_column="Version",
+        additional_instructions_column="Extra Instructions",
+    )
+    complete_data["headlines"] = [[]] * len(complete_data)
+    complete_data["descriptions"] = [[]] * len(complete_data)
+    new_generations_data = complete_data.copy()
+    return new_generations_data, complete_data
+
+  existing_generations_data = data_utils.collapse_headlines_and_descriptions(
+      existing_generations_data
+  )
+  existing_generations_data.index = existing_generations_data.index.set_levels(
+      existing_generations_data.index.get_level_values("Version").astype(str),
+      level="Version",
+      verify_integrity=False,
+  )
+
+  complete_data = data_utils.construct_generation_data(
+      new_keywords_data=new_keywords_data,
+      additional_instructions_data=additional_instructions_data,
+      existing_generations_data=existing_generations_data,
+      n_versions=n_versions,
+      existing_headlines_column="headlines",
+      existing_descriptions_column="descriptions",
+      keyword_column="Keyword",
+      version_column="Version",
+      additional_instructions_column="Extra Instructions",
+  )
+  missing_columns = [
+      column
+      for column in existing_generations_data.columns
+      if column not in complete_data.columns
+  ]
+  if missing_columns:
+    complete_data = complete_data.join(
+        existing_generations_data[missing_columns],
+        how="left",
+    )
+
+  generation_not_required = complete_data.index.isin(
+      existing_generations_data.index
+  )
+  if fill_gaps:
+    generation_not_required = generation_not_required & complete_data.apply(
+        lambda row: copycat_instance.ad_copy_evaluator.is_complete(
+            copycat.GoogleAd(
+                headlines=row["headlines"],
+                descriptions=row["descriptions"],
+            )
+        ),
+        axis=1,
+    )
+  else:
+    generation_not_required = generation_not_required & complete_data.apply(
+        lambda row: not copycat_instance.ad_copy_evaluator.is_empty(
+            copycat.GoogleAd(
+                headlines=row["headlines"],
+                descriptions=row["descriptions"],
+            )
+        ),
+        axis=1,
+    )
+
+  new_generations_data = complete_data.loc[~generation_not_required].copy()
+
+  return new_generations_data, complete_data
+
+
+def generate_new_ad_preview(event: me.ClickEvent):
+  """Generates a preview of the prompt to be used to generate a new ad.
+
+  The preview is generated using the parameters from the Google Sheet
+  and the CopycatParamsState. The preview is then saved to the Google Sheet.
+
+  Args:
+    event: The click event to handle.
+  """
+  state = me.state(states.AppState)
+  params = me.state(states.CopycatParamsState)
+  sheet = sheets.GoogleSheet.load(state.google_sheet_url)
+  copycat_instance = load_copycat_from_sheet(sheet)
+
+  generation_data, complete_data = _prepare_new_ads_for_generation(
+      sheet,
+      params.new_ads_number_of_versions,
+      params.new_ads_fill_gaps,
+      copycat_instance,
+  )
+
+  if len(generation_data) > 0:
+    first_row = generation_data.iloc[0].to_dict()
+  elif len(complete_data) > 0:
+    send_log(
+        "No ads to generate, generating a preview for an existing ad",
+        logging.WARNING,
+    )
+    first_row = complete_data.iloc[0].to_dict()
+  else:
+    send_log(
+        "No new or existing ads to generate, no preview will be generated",
+        logging.ERROR,
+    )
+    return
+
+  vertexai.init(
+      project=params.vertex_ai_project_id,
+      location=params.vertex_ai_location,
+  )
+
+  style_guide = params.style_guide if params.new_ads_use_style_guide else ""
+  headlines = [first_row["headlines"]] if "headlines" in first_row else [[]]
+  descriptions = (
+      [first_row["descriptions"]] if "descriptions" in first_row else [[]]
+  )
+
+  request = copycat_instance.construct_text_generation_requests_for_new_ad_copy(
+      keywords=[first_row["keywords"]],
+      keywords_specific_instructions=[first_row["additional_instructions"]],
+      system_instruction_kwargs=dict(
+          company_name=params.company_name,
+          language=params.language,
+      ),
+      style_guide=style_guide,
+      num_in_context_examples=params.new_ads_num_in_context_examples,
+      model_name=params.new_ads_chat_model_name,
+      temperature=params.new_ads_temperature,
+      top_k=params.new_ads_top_k,
+      top_p=params.new_ads_top_p,
+      safety_settings=copycat.ALL_SAFETY_SETTINGS_ONLY_HIGH,
+      existing_headlines=headlines,
+      existing_descriptions=descriptions,
+  )[0]
+
+  state.new_ad_preview_request = request.to_markdown()
+  save_params_to_google_sheet(event)
+
+
+def generate_ads(event: me.ClickEvent):
+  """Generates ads from the Google Sheet.
+
+  The ads are generated using the parameters from the Google Sheet
+  and the CopycatParamsState. The ads are then saved to the Google Sheet.
+
+  The ads are generated in batches and the batches are written immediately to
+  the Google Sheet once they are generated.
+
+  Args:
+    event: The click event to handle.
+  """
+  state = me.state(states.AppState)
+  params = me.state(states.CopycatParamsState)
+  sheet = sheets.GoogleSheet.load(state.google_sheet_url)
+  copycat_instance = load_copycat_from_sheet(sheet)
+
+  save_params_to_google_sheet(event)
+
+  vertexai.init(
+      project=params.vertex_ai_project_id,
+      location=params.vertex_ai_location,
+  )
+
+  generation_data, complete_data = _prepare_new_ads_for_generation(
+      sheet,
+      params.new_ads_number_of_versions,
+      params.new_ads_fill_gaps,
+      copycat_instance,
+  )
+  updated_complete_data = data_utils.explode_headlines_and_descriptions(
+      complete_data.copy(),
+      max_headlines=params.max_headlines,
+      max_descriptions=params.max_descriptions,
+  )
+  generation_data = generation_data.rename(
+      columns={
+          "headlines": "existing_headlines",
+          "descriptions": "existing_descriptions",
+      },
+      errors="ignore",
+  )
+
+  send_log("Loaded generation and complete data")
+
+  if len(generation_data) == 0:
+    send_log("No ads to generate", logging.WARNING)
+    return
+
+  generation_params = dict(
+      system_instruction_kwargs=dict(
+          company_name=params.company_name,
+          language=params.language,
+      ),
+      num_in_context_examples=params.new_ads_num_in_context_examples,
+      model_name=params.new_ads_chat_model_name,
+      temperature=params.new_ads_temperature,
+      top_k=params.new_ads_top_k,
+      top_p=params.new_ads_top_p,
+      allow_memorised_headlines=params.new_ads_allow_memorised_headlines,
+      allow_memorised_descriptions=params.new_ads_allow_memorised_descriptions,
+      safety_settings=copycat.ALL_SAFETY_SETTINGS_ONLY_HIGH,
+      style_guide=params.style_guide if params.new_ads_use_style_guide else "",
+  )
+  data_iterator = data_utils.iterate_over_batches(
+      generation_data,
+      params.new_ads_batch_size,
+      params.new_ads_generation_limit,
+  )
+  for batch_number, generation_batch in enumerate(data_iterator):
+    send_log(f"Generating batch {batch_number+1}")
+    generation_batch["generated_ad_object"] = (
+        copycat_instance.generate_new_ad_copy_for_dataframe(
+            data=generation_batch,
+            keywords_specific_instructions_column="additional_instructions",
+            **generation_params,
+        )
+    )
+    generation_batch = (
+        generation_batch.pipe(data_utils.explode_generated_ad_object)
+        .pipe(
+            data_utils.explode_headlines_and_descriptions,
+            max_headlines=params.max_headlines,
+            max_descriptions=params.max_descriptions,
+        )
+        .drop(
+            columns=[
+                "generated_ad_object",
+                "existing_headlines",
+                "existing_descriptions",
+            ],
+            errors="ignore",
+        )
+    )
+
+    isin_batch = updated_complete_data.index.isin(generation_batch.index)
+
+    updated_complete_data = updated_complete_data.loc[~isin_batch]
+    updated_complete_data = pd.concat([updated_complete_data, generation_batch])
+    updated_complete_data = updated_complete_data.fillna("").loc[
+        complete_data.index
+    ]
+
+    column_order = ["keywords", "additional_instructions"]
+    column_order.extend(
+        col
+        for col in updated_complete_data.columns
+        if col.startswith("Headline ")
+    )
+    column_order.extend(
+        col
+        for col in updated_complete_data.columns
+        if col.startswith("Description ")
+    )
+    column_order.extend(
+        col for col in updated_complete_data.columns if col not in column_order
+    )
+
+    sheet["Generated Ads"] = updated_complete_data[column_order]
+
+  send_log("Generation Complete")
