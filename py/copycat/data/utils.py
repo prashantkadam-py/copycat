@@ -331,8 +331,6 @@ def construct_generation_data(
 
   Args:
     new_keywords_data: The new keywords data.
-    index_columns: The columns to index the data by. These should uniquely
-      identify a single new ad to generate.
     additional_instructions_data: The additional instructions data.
     existing_generations_data: The existing generations data.
     keyword_column: The column in the new keywords data that contains the
@@ -424,3 +422,75 @@ def construct_generation_data(
     )
 
   return generation_data
+
+
+def explode_generated_ad_object(
+    data: pd.DataFrame,
+    *,
+    generated_ad_object_column="generated_ad_object",
+    headlines_column="headlines",
+    descriptions_column="descriptions",
+    success_column="Success",
+    headlines_are_memorised_column="Headlines are Memorized",
+    descriptions_are_memorised_column="Descriptions are Memorized",
+    style_similarity_column="Style Similarity",
+    keyword_similarity_column="Keyword Similarity",
+    warning_message_column="Warnings",
+    error_message_column="Errors",
+):
+  """Explodes the generated_ad_object column into separate columns.
+
+  Args:
+    data: The input DataFrame.
+    generated_ad_object_column: The column in the data that contains the
+      generated ad objects.
+    headlines_column: The name of the column to store the headlines.
+    descriptions_column: The name of the column to store the descriptions.
+    success_column: The name of the column to store whether the generation was
+      successful.
+    headlines_are_memorised_column: The name of the column to store whether the
+      headlines are memorized.
+    descriptions_are_memorised_column: The name of the column to store whether
+      the descriptions are memorized.
+    style_similarity_column: The name of the column to store the style
+      similarity.
+    keyword_similarity_column: The name of the column to store the keyword
+      similarity.
+    warning_message_column: The name of the column to store the warning
+      messages.
+    error_message_column: The name of the column to store the error messages.
+
+  Returns:
+    A new DataFrame with the generated_ad_object column exploded into separate
+    columns.
+  """
+  data = data.copy()
+  data[headlines_column] = data[generated_ad_object_column].apply(
+      lambda x: x.google_ad.headlines
+  )
+  data[descriptions_column] = data[generated_ad_object_column].apply(
+      lambda x: x.google_ad.descriptions
+  )
+  data[success_column] = data[generated_ad_object_column].apply(
+      lambda x: x.success
+  )
+  data[headlines_are_memorised_column] = data[generated_ad_object_column].apply(
+      lambda x: x.evaluation_results.headlines_are_memorised
+  )
+  data[descriptions_are_memorised_column] = data[
+      generated_ad_object_column
+  ].apply(lambda x: x.evaluation_results.descriptions_are_memorised)
+  data[style_similarity_column] = data[generated_ad_object_column].apply(
+      lambda x: x.evaluation_results.style_similarity
+  )
+  data[keyword_similarity_column] = data[generated_ad_object_column].apply(
+      lambda x: x.evaluation_results.keyword_similarity
+  )
+  data[warning_message_column] = data[generated_ad_object_column].apply(
+      lambda x: x.warning_message
+  )
+  data[error_message_column] = data[generated_ad_object_column].apply(
+      lambda x: x.error_message
+  )
+
+  return data

@@ -112,6 +112,12 @@ class CopycatResponse(pydantic.BaseModel):
         map(lambda x: f"- {x}", sorted(self.evaluation_results.errors))
     )
 
+  @property
+  def warning_message(self) -> str:
+    return "\n".join(
+        map(lambda x: f"- {x}", sorted(self.evaluation_results.warnings))
+    )
+
   def raise_if_not_success(self) -> None:
     if not self.success:
       LOGGER.error("CopycatResponse is not successful: %s", self.error_message)

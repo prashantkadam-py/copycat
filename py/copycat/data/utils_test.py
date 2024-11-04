@@ -16,6 +16,8 @@ from absl.testing import absltest
 from absl.testing import parameterized
 import pandas as pd
 
+from copycat import copycat
+from copycat import google_ads
 from copycat.data import utils
 
 
@@ -446,6 +448,67 @@ class ConstructGenerationDataTest(parameterized.TestCase):
     }).set_index(["index_column_1", "index_column_2", "version"])
 
     pd.testing.assert_frame_equal(actual, expected, check_like=True)
+
+
+class ExplodeGeneratedAdObjectTest(parameterized.TestCase):
+
+  def test_explode_generated_ads_object(self):
+    data = pd.DataFrame({
+        "generated_ad_object": [
+            copycat.CopycatResponse(
+                google_ad=google_ads.GoogleAd(
+                    headlines=["headline 1", "headline 2"],
+                    descriptions=["description 1", "description 2"],
+                ),
+                keywords="keyword 1, keyword 2",
+                evaluation_results=copycat.EvaluationResults(
+                    headlines_are_memorised=True,
+                    descriptions_are_memorised=True,
+                    style_similarity=0.5,
+                    keyword_similarity=0.6,
+                    warnings=["warning 1", "warning 2"],
+                    errors=["error 1", "error 2"],
+                ),
+            ),
+            copycat.CopycatResponse(
+                google_ad=google_ads.GoogleAd(
+                    headlines=["headline 3", "headline 4"],
+                    descriptions=["description 3", "description 4"],
+                ),
+                keywords="keyword 3, keyword 4",
+                evaluation_results=copycat.EvaluationResults(
+                    headlines_are_memorised=False,
+                    descriptions_are_memorised=False,
+                    style_similarity=0.25,
+                    keyword_similarity=0.35,
+                    warnings=[],
+                    errors=[],
+                ),
+            ),
+        ],
+    })
+
+    exploded_data = utils.explode_generated_ad_object(data)
+    expected_data = pd.DataFrame({
+        "headlines": [
+            ["headline 1", "headline 2"],
+            ["headline 3", "headline 4"],
+        ],
+        "descriptions": [
+            ["description 1", "description 2"],
+            ["description 3", "description 4"],
+        ],
+        "Success": [False, True],
+        "Headlines are Memorized": [True, False],
+        "Descriptions are Memorized": [True, False],
+        "Style Similarity": [0.5, 0.25],
+        "Keyword Similarity": [0.6, 0.35],
+        "Warnings": ["- warning 1\n- warning 2", ""],
+        "Errors": ["- error 1\n- error 2", ""],
+    })
+    expected_data["generated_ad_object"] = data["generated_ad_object"].copy()
+
+    pd.testing.assert_frame_equal(exploded_data, expected_data, check_like=True)
 
 
 if __name__ == "__main__":

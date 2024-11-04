@@ -93,6 +93,36 @@ class CopycatResponseTest(parameterized.TestCase):
     )
     self.assertEqual(response.error_message, expected_error_message)
 
+  @parameterized.parameters([
+      ([], ""),
+      (["One warning message"], "- One warning message"),
+      (
+          ["Two warning message", "Two warning message (b)"],
+          "- Two warning message\n- Two warning message (b)",
+      ),
+  ])
+  def test_warning_message_is_created_by_joining_warnings(
+      self, warnings, expected_warning_message
+  ):
+    generated_google_ad = google_ads.GoogleAd(
+        headlines=["New headline 1", "New headline 2"],
+        descriptions=["New description"],
+    )
+
+    response = copycat.CopycatResponse(
+        google_ad=generated_google_ad,
+        keywords=self.keywords,
+        evaluation_results=copycat.EvaluationResults(
+            headlines_are_memorised=False,
+            descriptions_are_memorised=False,
+            style_similarity=None,
+            keyword_similarity=None,
+            warnings=warnings,
+            errors=[],
+        ),
+    )
+    self.assertEqual(response.warning_message, expected_warning_message)
+
   def test_raise_if_not_success_raises_exception_if_not_success(self):
     response = copycat.CopycatResponse(
         google_ad=google_ads.GoogleAd(
