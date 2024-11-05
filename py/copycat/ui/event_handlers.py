@@ -320,6 +320,8 @@ def start_logger(url: str) -> None:
   """
   handler = sheets.GoogleSheetsHandler(sheet_url=url, log_worksheet_name="Logs")
   handler.setLevel(logging.INFO)
+
+
   logger = logging.getLogger("copycat")
   logger.handlers = []
   logger.addHandler(handler)
@@ -347,7 +349,9 @@ def update_log_level(event: me.SelectSelectionChangeEvent) -> None:
   state = me.state(states.AppState)
   state.log_level = int(event.value)
   logger = logging.getLogger("copycat")
+  logger.setLevel(state.log_level)
   logger.handlers[0].setLevel(state.log_level)
+
 
 
 def show_hide_google_sheet(event: me.ClickEvent) -> None:
