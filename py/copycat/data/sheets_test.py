@@ -394,5 +394,105 @@ class GoogleSheetLoggerTest(parameterized.TestCase):
       sheets.GoogleSheetsLogSender(spreadsheet.url)
 
 
+class CreateTemplateCopycatSheetTest(parameterized.TestCase):
+
+  def setUp(self):
+    super().setUp()
+    self.gspread_patcher = mock_gspread.PatchGspread()
+    self.gspread_patcher.start()
+
+    dummy_credentials = "dummy_credentials"
+    sheets.set_google_auth_credentials(dummy_credentials)
+    self.client = gspread.authorize(dummy_credentials)
+
+  def tearDown(self):
+    super().tearDown()
+    self.gspread_patcher.stop()
+
+  def test_expected_number_of_rows_are_created_when_include_demo_data_is_true(
+      self,
+  ):
+    url = sheets.create_template_copycat_sheet(include_demo_data=True)
+    sheet = sheets.GoogleSheet.load(url)
+
+    self.assertLen(sheet[sheets.TEMPLATE_EXISTING_ADS_WORKSHEET_NAME], 7)
+    self.assertLen(sheet[sheets.TEMPLATE_NEW_KEYWORDS_WORKSHEET_NAME], 14)
+    self.assertLen(sheet[sheets.TEMPLATE_EXTRA_INSTRUCTIONS_WORKSHEET_NAME], 1)
+
+  def test_no_rows_are_created_when_include_demo_data_is_false(self):
+    url = sheets.create_template_copycat_sheet(include_demo_data=False)
+    sheet = sheets.GoogleSheet.load(url)
+
+    self.assertEmpty(sheet[sheets.TEMPLATE_EXISTING_ADS_WORKSHEET_NAME])
+    self.assertEmpty(sheet[sheets.TEMPLATE_NEW_KEYWORDS_WORKSHEET_NAME])
+    self.assertEmpty(sheet[sheets.TEMPLATE_EXTRA_INSTRUCTIONS_WORKSHEET_NAME])
+
+  @parameterized.parameters(True, False)
+  def test_expected_columns_and_index_are_created(self, include_demo_data):
+    url = sheets.create_template_copycat_sheet(
+        include_demo_data=include_demo_data
+    )
+    sheet = sheets.GoogleSheet.load(url)
+
+    self.assertListEqual(
+        sheet[
+            sheets.TEMPLATE_EXISTING_ADS_WORKSHEET_NAME
+        ].columns.values.tolist(),
+        [
+            "URL",
+            "Ad Strength",
+            "Keywords",
+            "Headline 1",
+            "Headline 2",
+            "Headline 3",
+            "Headline 4",
+            "Headline 5",
+            "Headline 6",
+            "Headline 7",
+            "Headline 8",
+            "Headline 9",
+            "Headline 10",
+            "Headline 11",
+            "Headline 12",
+            "Headline 13",
+            "Headline 14",
+            "Headline 15",
+            "Description 1",
+            "Description 2",
+            "Description 3",
+            "Description 4",
+        ],
+    )
+    self.assertListEqual(
+        sheet[
+            sheets.TEMPLATE_NEW_KEYWORDS_WORKSHEET_NAME
+        ].columns.values.tolist(),
+        [
+            "Keyword",
+        ],
+    )
+    self.assertListEqual(
+        sheet[
+            sheets.TEMPLATE_EXTRA_INSTRUCTIONS_WORKSHEET_NAME
+        ].columns.values.tolist(),
+        [
+            "Extra Instructions",
+        ],
+    )
+
+    self.assertListEqual(
+        sheet[sheets.TEMPLATE_EXISTING_ADS_WORKSHEET_NAME].index.names,
+        ["Campaign ID", "Ad Group"],
+    )
+    self.assertListEqual(
+        sheet[sheets.TEMPLATE_NEW_KEYWORDS_WORKSHEET_NAME].index.names,
+        ["Campaign ID", "Ad Group"],
+    )
+    self.assertListEqual(
+        sheet[sheets.TEMPLATE_EXTRA_INSTRUCTIONS_WORKSHEET_NAME].index.names,
+        ["Campaign ID", "Ad Group", "Version"],
+    )
+
+
 if __name__ == "__main__":
   absltest.main()

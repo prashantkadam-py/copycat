@@ -112,12 +112,20 @@ def starting_dialog(state: states.AppState):
                   padding=me.Padding.all(0),
               ),
           )
-          me.button(
-              "New",
-              type="flat",
-              disabled=not state.new_google_sheet_name,
-              on_click=event_handlers.create_new_google_sheet,
-          )
+          with components.row(align_items="center"):
+            me.button(
+                "New",
+                type="flat",
+                disabled=not state.new_google_sheet_name,
+                on_click=event_handlers.create_new_google_sheet,
+            )
+            me.checkbox(
+                label="Include Demo Data",
+                key="new_google_sheet_include_demo_data",
+                on_change=event_handlers.update_app_state_parameter_checkbox,
+                checked=state.new_google_sheet_include_demo_data,
+                disabled=not state.new_google_sheet_name,
+            )
         with components.column(align_items="center", width="50%", gap=0):
           me.text("Load Existing Sheet", type="headline-6")
           me.input(

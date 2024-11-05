@@ -26,6 +26,7 @@ class AppState:
   highlighted_url: str = "/setup"
   new_google_sheet_name: str = ""
   new_google_sheet_url: str = ""
+  new_google_sheet_include_demo_data: bool = True
   google_sheet_name: str = ""
   google_sheet_url: str = ""
   display_google_sheet: bool = False

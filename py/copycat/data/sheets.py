@@ -15,11 +15,17 @@
 """Utility functions for loading and saving data to Google Sheets."""
 
 import logging
+import pathlib
 import time
 from typing import Any
 import google.auth.credentials
 import gspread
 import pandas as pd
+
+
+TEMPLATE_EXISTING_ADS_WORKSHEET_NAME = "Training Ads"
+TEMPLATE_NEW_KEYWORDS_WORKSHEET_NAME = "New Keywords"
+TEMPLATE_EXTRA_INSTRUCTIONS_WORKSHEET_NAME = "Extra Instructions for New Ads"
 
 
 HEADING_FORMAT = {
@@ -434,3 +440,76 @@ class GoogleSheetsHandler(logging.Handler):
       record: The log record to emit.
     """
     self.sender.write_log(record)
+
+
+def create_template_copycat_sheet(
+    spreadsheet_name: str = "Copycat Template", include_demo_data: bool = True
+) -> str:
+  """Creates a template Copycat sheet.
+
+  The template sheet contains worksheets for existing ads, new keywords, and
+  extra instructions. This sheet is the correct format for the Copycat UI.
+
+  If include_demo_data is True, then the template sheet will contain demo data
+  for existing ads, new keywords, and extra instructions. If include_demo_data
+  is False, then the template sheet will only contain column headings.
+
+  The template sheet contains the following worksheets and column headings:
+  - Existing Ads:
+    - Campaign ID
+    - Ad Group
+    - URL
+    - Ad Strength
+    - Keywords
+    - Headline 1
+    - ...
+    - Headline 15
+    - Description 1
+    - ...
+    - Description 4
+  - New Keywords:
+    - Campaign ID
+    - Ad Group
+    - Keyword
+  - Extra Instructions for New Ads:
+    - Campaign ID
+    - Ad Group
+    - Version
+    - Extra Instructions
+
+
+  Args:
+    spreadsheet_name: The name of the spreadsheet to create.
+    include_demo_data: Whether to include demo data in the template sheet.
+
+  Returns:
+    The URL of the template sheet.
+  """
+  sheet = GoogleSheet.new(spreadsheet_name)
+
+  demo_data_path = pathlib.Path(__file__).parent / "demo_data"
+
+  demo_data_files = demo_data_path.glob("*.csv")
+  data = {
+      demo_data_file.stem: pd.read_csv(demo_data_file)
+      for demo_data_file in demo_data_files
+  }
+
+  if not include_demo_data:
+    for name in data.keys():
+      data[name] = pd.DataFrame(columns=data[name].columns)
+
+  sheet[TEMPLATE_EXISTING_ADS_WORKSHEET_NAME] = (
+      data["existing_ads"].set_index(["Campaign ID", "Ad Group"]).fillna("")
+  )
+  sheet[TEMPLATE_NEW_KEYWORDS_WORKSHEET_NAME] = (
+      data["new_keywords"].set_index(["Campaign ID", "Ad Group"]).fillna("")
+  )
+  sheet[TEMPLATE_EXTRA_INSTRUCTIONS_WORKSHEET_NAME] = (
+      data["extra_instructions"]
+      .set_index(["Campaign ID", "Ad Group", "Version"])
+      .fillna("")
+  )
+
+  sheet.delete_worksheet("Sheet1")
+  return sheet.url

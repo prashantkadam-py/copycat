@@ -76,6 +76,18 @@ def update_copycat_parameter_from_slide_toggle(
   setattr(state, event.key, not getattr(state, event.key))
 
 
+def update_app_state_parameter_checkbox(
+    event: me.CheckboxChangeEvent,
+) -> None:
+  """Updates a app state parameter from a checkbox change event.
+
+  Args:
+    event: The checkbox change event to handle.
+  """
+  state = me.state(states.AppState)
+  setattr(state, event.key, not getattr(state, event.key))
+
+
 def language_on_blur(event: me.InputBlurEvent) -> None:
   """Updates the language and the embedding model name based on the language.
 
@@ -247,35 +259,22 @@ def create_new_google_sheet(event: me.ClickEvent) -> None:
     event: The click event to handle.
   """
   state = me.state(states.AppState)
-  sheet = sheets.GoogleSheet.new(state.new_google_sheet_name)
-  start_logger(sheet.url)
+  new_sheet_url = sheets.create_template_copycat_sheet(
+      state.new_google_sheet_name, state.new_google_sheet_include_demo_data
+  )
+  start_logger(new_sheet_url)
+  send_log(
+      f"Created new Google Sheet: {state.new_google_sheet_name}. Include demo"
+      f" data: {state.new_google_sheet_include_demo_data}."
+  )
 
   reset_state(states.AppState)
   reset_state(states.CopycatParamsState)
   state = me.state(states.AppState)
 
+  sheet = sheets.GoogleSheet.load(new_sheet_url)
   state.google_sheet_url = sheet.url
   state.google_sheet_name = sheet.title
-
-  sheet["Training Ads"] = pd.DataFrame(
-      columns=[
-          "Campaign ID",
-          "Ad Group",
-          "URL",
-          "Ad Strength",
-          "Keywords",
-      ]
-      + [f"Headline {i}" for i in range(1, 16)]
-      + [f"Description {i}" for i in range(1, 5)],
-  ).set_index(["Campaign ID", "Ad Group"])
-  sheet["New Keywords"] = pd.DataFrame(
-      columns=["Campaign ID", "Ad Group", "Keyword"],
-  ).set_index(["Campaign ID", "Ad Group"])
-  sheet["Extra Instructions for New Ads"] = pd.DataFrame(
-      columns=["Campaign ID", "Ad Group", "Extra Instructions"],
-  ).set_index(["Campaign ID", "Ad Group"])
-
-  sheet.delete_worksheet("Sheet1")
   save_params_to_google_sheet(event)
   close_starting_dialog(event)
   send_log("New Google Sheet created")
