@@ -74,8 +74,14 @@ VECTORSTORE_AD_EXEMPLARS_FILE_NAME = "vectorstore_ad_exemplars.csv"
 
 class ModelName(enum.Enum):
   GEMINI_1_0_PRO = "gemini-pro"
-  GEMINI_1_5_PRO = "gemini-1.5-pro-preview-0514"
-  GEMINI_1_5_FLASH = "gemini-1.5-flash-preview-0514"
+  GEMINI_1_5_PRO_PREVIEW = "gemini-1.5-pro-preview-0514"
+  GEMINI_1_5_PRO_001 = "gemini-1.5-pro-001"
+  GEMINI_1_5_PRO_002 = "gemini-1.5-pro-002"
+  GEMINI_1_5_PRO = "gemini-1.5-pro-002"
+  GEMINI_1_5_FLASH_PREVIEW = "gemini-1.5-flash-preview-0514"
+  GEMINI_1_5_FLASH_001 = "gemini-1.5-flash-001"
+  GEMINI_1_5_FLASH_002 = "gemini-1.5-flash-002"
+  GEMINI_1_5_FLASH = "gemini-1.5-flash-002"
 
 
 class EmbeddingModelName(enum.Enum):
@@ -215,13 +221,13 @@ class AdCopyVectorstore:
         embedding_model_name.value
     )
     n_batches = np.ceil(len(texts) / batch_size)
-    LOGGER.info(
+    LOGGER.debug(
         "Using embedding model: %s, dimensionality: %d, task type: %s",
         embedding_model_name.value,
         dimensionality,
         task_type,
     )
-    LOGGER.info(
+    LOGGER.debug(
         "Generating %d embeddings in %d batches.", len(texts), n_batches
     )
 
@@ -246,7 +252,7 @@ class AdCopyVectorstore:
       )
       embeddings.extend([emb.values for emb in embedding_outputs])
 
-    LOGGER.info("Embeddings generated.")
+    LOGGER.debug("Embeddings generated.")
     return embeddings
 
   def embed_documents(self, texts: list[str]) -> list[list[float]]:
@@ -874,6 +880,7 @@ def construct_new_ad_copy_prompt(
           keywords_specific_instructions=keywords_specific_instructions,
       )
   )
+
   return prompt
 
 
@@ -925,20 +932,6 @@ def remove_invalid_headlines_and_descriptions(
     ]
 
 
-def _format_instructions(output_schema: type[pydantic.BaseModel]) -> str:
-  """Returns the output schema as a string to be used in the prompt."""
-  elements = []
-  for k, v in output_schema.model_fields.items():
-    elements.append(f"'{k}': {v.annotation}")
-  element_lines = ",".join(map(lambda x: "\n  " + x, elements))
-  return (
-      f"Return: {output_schema.__name__}\n{output_schema.__name__} = "
-      + "{"
-      + element_lines
-      + "\n}"
-  )
-
-
 def async_generate_google_ad_json(
     request: TextGenerationRequest,
 ) -> AsyncGenerationResponse:
@@ -956,8 +949,6 @@ def async_generate_google_ad_json(
   Returns:
     The generated response, which is a valid json representation of a GoogleAd.
   """
-  model_name = ModelName(request.chat_model_name)
-
   generation_config_params = dict(
       temperature=request.temperature,
       top_k=request.top_k,
@@ -965,27 +956,44 @@ def async_generate_google_ad_json(
       response_mime_type="application/json",
   )
 
-  if model_name is ModelName.GEMINI_1_5_PRO:
-    # Gemini 1.5 pro supports constrained generation, which allows the schema
-    # to be passed as an arguments to the generation config.
-    response_schema = GoogleAd.model_json_schema()
-    response_schema["description"] = (
-        response_schema.pop("description").replace("\n", " ").replace("  ", " ")
-    )
-    generation_config_params["response_schema"] = response_schema
+  generation_config_params["response_schema"] = {
+      "type": "OBJECT",
+      "properties": {
+          "headlines": {
+              "type": "ARRAY",
+              "items": {
+                  "type": "string",
+                  "description": (
+                      "The headlines for the ad. Must be fewer than 30"
+                      " characters."
+                  ),
+              },
+          },
+          "descriptions": {
+              "type": "ARRAY",
+              "items": {
+                  "type": "string",
+                  "description": (
+                      "The descriptions for the ad. Must be fewer than 90"
+                      " characters."
+                  ),
+              },
+          },
+      },
+      "required": ["headlines", "descriptions"],
+  }
 
   generation_config = generative_models.GenerationConfig(
       **generation_config_params
   )
 
-  system_instruction = (
-      f"{request.system_instruction}\n\n{_format_instructions(GoogleAd)}"
-  )
+  LOGGER.debug("System instruction: %s", request.system_instruction)
+  LOGGER.debug("Prompt: %s", request.prompt)
 
   model = generative_models.GenerativeModel(
-      model_name=model_name.value,
+      model_name=request.chat_model_name.value,
       generation_config=generation_config,
-      system_instruction=system_instruction,
+      system_instruction=request.system_instruction,
       safety_settings=request.safety_settings,
   )
 

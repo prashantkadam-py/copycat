@@ -185,7 +185,7 @@ class CopycatTest(parameterized.TestCase):
     })
     self.tmp_dir = self.create_tempdir()
 
-    self.model_name = "gemini-1.5-flash-preview-0514"
+    self.model_name = "gemini-1.5-flash-002"
 
     self.embedding_model_patcher = testing_utils.PatchEmbeddingsModel()
     self.embedding_model_patcher.start()

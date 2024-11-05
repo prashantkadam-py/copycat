@@ -95,7 +95,7 @@ class TextGenerationRequestTest(parameterized.TestCase):
       
       **Model Parameters:**
 
-      Model name: gemini-1.5-flash-preview-0514
+      Model name: gemini-1.5-flash-002
 
       Temperature: 0.95
 
@@ -182,7 +182,7 @@ class TextGenerationRequestTest(parameterized.TestCase):
 
       **Model Parameters:**
 
-      Model name: gemini-1.5-flash-preview-0514
+      Model name: gemini-1.5-flash-002
 
       Temperature: 0.95
 
@@ -990,11 +990,11 @@ class AdCopyGeneratorTest(parameterized.TestCase):
   @parameterized.parameters(
       (
           ad_copy_generator.ModelName.GEMINI_1_5_FLASH,
-          "gemini-1.5-flash-preview-0514",
+          "gemini-1.5-flash-002",
       ),
       (
           ad_copy_generator.ModelName.GEMINI_1_5_PRO,
-          "gemini-1.5-pro-preview-0514",
+          "gemini-1.5-pro-002",
       ),
   )
   @testing_utils.PatchGenerativeModel(response="Response text")
@@ -1061,41 +1061,6 @@ class AdCopyGeneratorTest(parameterized.TestCase):
       ad_copy_generator.ModelName.GEMINI_1_5_PRO,
   )
   @testing_utils.PatchGenerativeModel(response="Response text")
-  def test_generate_google_ad_adds_format_instructions_to_system_instruction(
-      self, input_model_name, generative_model_patcher
-  ):
-    request = ad_copy_generator.TextGenerationRequest(
-        keywords="keyword 1, keyword 2",
-        prompt=[
-            generative_models.Content(
-                role="user",
-                parts=[generative_models.Part.from_text("Example prompt")],
-            )
-        ],
-        system_instruction="Example system instruction",
-        chat_model_name=input_model_name,
-        temperature=0.9,
-        top_k=40,
-        top_p=0.95,
-        safety_settings=None,
-        existing_ad_copy=google_ads.GoogleAd(headlines=[], descriptions=[]),
-    )
-    ad_copy_generator.generate_google_ad_json_batch([request])
-    expected_system_instruction = (
-        "Example system instruction\n\nReturn:"
-        " GoogleAd\nGoogleAd = {\n  'headlines': list[str],\n "
-        " 'descriptions': list[str]\n}"
-    )
-    self.assertEqual(
-        generative_model_patcher.mock_init.call_args[1]["system_instruction"],
-        expected_system_instruction,
-    )
-
-  @parameterized.parameters(
-      ad_copy_generator.ModelName.GEMINI_1_5_FLASH,
-      ad_copy_generator.ModelName.GEMINI_1_5_PRO,
-  )
-  @testing_utils.PatchGenerativeModel(response="Response text")
   def test_generate_google_ad_uses_expected_generation_config(
       self, input_model_name, generative_model_patcher
   ):
@@ -1124,33 +1089,33 @@ class AdCopyGeneratorTest(parameterized.TestCase):
         top_p=0.95,
         response_mime_type="application/json",
     )
-    if input_model_name is ad_copy_generator.ModelName.GEMINI_1_5_PRO:
-      expected_generation_config["response_schema"] = {
-          "type_": "OBJECT",
-          "properties": {
-              "headlines": {
-                  "type_": "ARRAY",
-                  "items": {"type_": "STRING"},
-                  "default": [],
-                  "title": "Headlines",
-              },
-              "descriptions": {
-                  "type_": "ARRAY",
-                  "items": {"type_": "STRING"},
-                  "default": [],
-                  "title": "Descriptions",
-              },
-          },
-          "property_ordering": ["headlines", "descriptions"],
-          "description": (
-              "Google ad copy. The google ad is defined by a list of headlines"
-              " and descriptions. The headlines and descriptions are each"
-              " limited to 30 and 90 characters respectively. Google Ads"
-              " combines the headlines and descriptions to create the final ad"
-              " copy."
-          ),
-          "title": "GoogleAd",
-      }
+    expected_generation_config["response_schema"] = {
+        "type_": "OBJECT",
+        "properties": {
+            "headlines": {
+                "type_": "ARRAY",
+                "items": {
+                    "type_": "STRING",
+                    "description": (
+                        "The headlines for the ad. Must be fewer than 30"
+                        " characters."
+                    ),
+                },
+            },
+            "descriptions": {
+                "type_": "ARRAY",
+                "items": {
+                    "type_": "STRING",
+                    "description": (
+                        "The descriptions for the ad. Must be fewer than 90"
+                        " characters."
+                    ),
+                },
+            },
+        },
+        "required": ["headlines", "descriptions"],
+        "property_ordering": ["headlines", "descriptions"],
+    }
 
     self.assertDictEqual(
         generative_model_patcher.mock_init.call_args[1][

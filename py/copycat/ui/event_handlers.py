@@ -348,10 +348,16 @@ def update_log_level(event: me.SelectSelectionChangeEvent) -> None:
   """
   state = me.state(states.AppState)
   state.log_level = int(event.value)
-  logger = logging.getLogger("copycat")
-  logger.setLevel(state.log_level)
-  logger.handlers[0].setLevel(state.log_level)
 
+  loggers = [
+      logging.getLogger(name) for name in logging.root.manager.loggerDict
+  ]
+  for logger in loggers:
+    if "copycat" in logger.name:
+      logger.setLevel(state.log_level)
+      for handler in logger.handlers:
+        if isinstance(handler, sheets.GoogleSheetsHandler):
+          handler.setLevel(state.log_level)
 
 
 def show_hide_google_sheet(event: me.ClickEvent) -> None:

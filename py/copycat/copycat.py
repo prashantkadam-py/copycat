@@ -478,6 +478,11 @@ class Copycat:
         continue
 
       try:
+        LOGGER.debug(
+            "Generation for keywords %s\n\n%s",
+            keywords_i,
+            raw_generated_ad_i.content.parts[0].text,
+        )
         generated_ad_copy = GoogleAd.model_validate_json(
             raw_generated_ad_i.content.parts[0].text
         )
