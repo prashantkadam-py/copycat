@@ -34,8 +34,10 @@ def prepare_data() -> None:
           " Ads', and they must follow the expected format exactly. This is"
           " especially important to check if you have created the Google Sheet"
           " manually. Make sure all the column names are correct and in the"
-          " correct order. To see what is expected, select New / Load and then"
-          " create a new Google Sheet and check the columns it contains."
+          " correct order, and that the correct number of columns and rows are"
+          " frozen in the google sheet. To see what is expected, select New /"
+          " Load and then create a new Google Sheet and check the columns it"
+          " contains."
       )
       me.text(
           "If the validation fails, you should check the Logs tab of your"

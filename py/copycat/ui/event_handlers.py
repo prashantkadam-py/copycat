@@ -378,34 +378,38 @@ def validate_sheet(event: me.ClickEvent) -> None:
 
   # Validate all required sheets exist, have the correct index and columns,
   # and have the minimum number of rows.
-  required_index_names = ["Campaign ID", "Ad Group"]
+  required_index_names = {
+      sheets.TEMPLATE_EXISTING_ADS_WORKSHEET_NAME: ["Campaign ID", "Ad Group"],
+      sheets.TEMPLATE_NEW_KEYWORDS_WORKSHEET_NAME: ["Campaign ID", "Ad Group"],
+      sheets.TEMPLATE_EXTRA_INSTRUCTIONS_WORKSHEET_NAME: [
+          "Campaign ID",
+          "Ad Group",
+          "Version",
+      ],
+  }
   required_columns = {
-      "Training Ads": set([
+      sheets.TEMPLATE_EXISTING_ADS_WORKSHEET_NAME: set([
           "URL",
           "Ad Strength",
           "Keywords",
           "Headline 1",
           "Description 1",
       ]),
-      "New Keywords": set([
+      sheets.TEMPLATE_NEW_KEYWORDS_WORKSHEET_NAME: set([
           "Keyword",
       ]),
-      "Extra Instructions for New Ads": set([
+      sheets.TEMPLATE_EXTRA_INSTRUCTIONS_WORKSHEET_NAME: set([
           "Extra Instructions",
       ]),
   }
   min_rows = {
-      "Training Ads": 1,
-      "New Keywords": 1,
-      "Extra Instructions for New Ads": 0,
+      sheets.TEMPLATE_EXISTING_ADS_WORKSHEET_NAME: 1,
+      sheets.TEMPLATE_NEW_KEYWORDS_WORKSHEET_NAME: 1,
+      sheets.TEMPLATE_EXTRA_INSTRUCTIONS_WORKSHEET_NAME: 0,
   }
 
   state.google_sheet_is_valid = True
-  for sheet_name in [
-      "Training Ads",
-      "New Keywords",
-      "Extra Instructions for New Ads",
-  ]:
+  for sheet_name in required_columns:
     if sheet_name in sheet:
       send_log(f"{sheet_name} sheet found")
     else:
@@ -413,13 +417,15 @@ def validate_sheet(event: me.ClickEvent) -> None:
           f"VALIDATION FAILED: {sheet_name} sheet not found.", logging.ERROR
       )
       state.google_sheet_is_valid = False
+      continue
 
     worksheet = sheet[sheet_name]
     actual_index_names = list(worksheet.index.names)
-    if required_index_names != actual_index_names:
+    if required_index_names[sheet_name] != actual_index_names:
       send_log(
           f"VALIDATION FAILED: {sheet_name} requires index columns:"
-          f" {required_index_names}, but found {actual_index_names}.",
+          f" {required_index_names[sheet_name]}, but found"
+          f" {actual_index_names}.",
           logging.ERROR,
       )
       state.google_sheet_is_valid = False
