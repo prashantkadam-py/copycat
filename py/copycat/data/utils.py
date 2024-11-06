@@ -406,7 +406,10 @@ def construct_generation_data(
   generation_data[version_column] = generation_data[version_column].astype(str)
   generation_data.set_index(join_columns, inplace=True)
 
-  if existing_generations_data is not None:
+  if (
+      existing_generations_data is not None
+      and len(existing_generations_data) > 0
+  ):
     if set(existing_generations_data.index.names) != set(join_columns):
       error_message = (
           "The index columns of the existing_generations_data do not match the"
@@ -429,18 +432,30 @@ def construct_generation_data(
             [existing_headlines_column, existing_descriptions_column]
         ],
         how="left",
+    ).rename(
+        columns={
+            existing_headlines_column: "existing_headlines",
+            existing_descriptions_column: "existing_descriptions",
+        }
     )
-    generation_data[
-        [existing_headlines_column, existing_descriptions_column]
-    ] = (
-        generation_data[
-            [existing_headlines_column, existing_descriptions_column]
-        ]
+    generation_data[["existing_headlines", "existing_descriptions"]] = (
+        generation_data[["existing_headlines", "existing_descriptions"]]
         .fillna("")
         .map(list)
     )
+  else:
+    generation_data["existing_headlines"] = ""
+    generation_data["existing_descriptions"] = ""
+    generation_data[["existing_headlines", "existing_descriptions"]] = (
+        generation_data[["existing_headlines", "existing_descriptions"]].map(
+            list
+        )
+    )
 
-  if additional_instructions_data is not None:
+  if (
+      additional_instructions_data is not None
+      and len(additional_instructions_data) > 0
+  ):
     if set(additional_instructions_data.index.names) != set(join_columns):
       error_message = (
           "The index columns of the additional_instructions_data do not match"
@@ -457,6 +472,8 @@ def construct_generation_data(
         target_data=generation_data,
         additional_instructions_column=additional_instructions_column,
     )
+  else:
+    generation_data["additional_instructions"] = ""
 
   return generation_data
 

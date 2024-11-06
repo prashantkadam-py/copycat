@@ -725,13 +725,18 @@ def _prepare_new_ads_for_generation(
         version_column="Version",
         additional_instructions_column="Extra Instructions",
     )
-    complete_data["headlines"] = [[]] * len(complete_data)
-    complete_data["descriptions"] = [[]] * len(complete_data)
+    complete_data["existing_headlines"] = [[]] * len(complete_data)
+    complete_data["existing_descriptions"] = [[]] * len(complete_data)
     new_generations_data = complete_data.copy()
     return new_generations_data, complete_data
 
   existing_generations_data = data_utils.collapse_headlines_and_descriptions(
       existing_generations_data
+  ).rename(
+      columns={
+          "headlines": "existing_headlines",
+          "descriptions": "existing_descriptions",
+      }
   )
   existing_generations_data.index = existing_generations_data.index.set_levels(
       existing_generations_data.index.get_level_values("Version").astype(str),
@@ -744,8 +749,8 @@ def _prepare_new_ads_for_generation(
       additional_instructions_data=additional_instructions_data,
       existing_generations_data=existing_generations_data,
       n_versions=n_versions,
-      existing_headlines_column="headlines",
-      existing_descriptions_column="descriptions",
+      existing_headlines_column="existing_headlines",
+      existing_descriptions_column="existing_descriptions",
       keyword_column="Keyword",
       version_column="Version",
       additional_instructions_column="Extra Instructions",
@@ -768,8 +773,8 @@ def _prepare_new_ads_for_generation(
     generation_not_required = generation_not_required & complete_data.apply(
         lambda row: copycat_instance.ad_copy_evaluator.is_complete(
             copycat.GoogleAd(
-                headlines=row["headlines"],
-                descriptions=row["descriptions"],
+                headlines=row["existing_headlines"],
+                descriptions=row["existing_descriptions"],
             )
         ),
         axis=1,
@@ -778,8 +783,8 @@ def _prepare_new_ads_for_generation(
     generation_not_required = generation_not_required & complete_data.apply(
         lambda row: not copycat_instance.ad_copy_evaluator.is_empty(
             copycat.GoogleAd(
-                headlines=row["headlines"],
-                descriptions=row["descriptions"],
+                headlines=row["existing_headlines"],
+                descriptions=row["existing_descriptions"],
             )
         ),
         axis=1,
@@ -832,9 +837,15 @@ def generate_new_ad_preview(event: me.ClickEvent):
   )
 
   style_guide = params.style_guide if params.new_ads_use_style_guide else ""
-  headlines = [first_row["headlines"]] if "headlines" in first_row else [[]]
+  headlines = (
+      [first_row["existing_headlines"]]
+      if "existing_headlines" in first_row
+      else [[]]
+  )
   descriptions = (
-      [first_row["descriptions"]] if "descriptions" in first_row else [[]]
+      [first_row["existing_descriptions"]]
+      if "existing_descriptions" in first_row
+      else [[]]
   )
 
   request = copycat_instance.construct_text_generation_requests_for_new_ad_copy(
@@ -890,16 +901,14 @@ def generate_ads(event: me.ClickEvent):
       copycat_instance,
   )
   updated_complete_data = data_utils.explode_headlines_and_descriptions(
-      complete_data.copy(),
+      complete_data.copy().rename(
+          columns={
+              "existing_headlines": "headlines",
+              "existing_descriptions": "descriptions",
+          }
+      ),
       max_headlines=params.max_headlines,
       max_descriptions=params.max_descriptions,
-  )
-  generation_data = generation_data.rename(
-      columns={
-          "headlines": "existing_headlines",
-          "descriptions": "existing_descriptions",
-      },
-      errors="ignore",
   )
 
   send_log("Loaded generation and complete data")
