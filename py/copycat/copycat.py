@@ -32,7 +32,7 @@ from copycat import ad_copy_evaluator
 from copycat import ad_copy_generator
 from copycat import google_ads
 from copycat import keyword_organiser
-from copycat import style_guide
+from copycat import style_guide as style_guide_generator
 
 GoogleAd = google_ads.GoogleAd
 GoogleAdFormat = google_ads.GoogleAdFormat
@@ -42,7 +42,7 @@ EmbeddingModelName = ad_copy_generator.EmbeddingModelName
 TextGenerationRequest = ad_copy_generator.TextGenerationRequest
 ExemplarSelectionMethod = ad_copy_generator.ExemplarSelectionMethod
 EvaluationResults = ad_copy_evaluator.EvaluationResults
-StyleGuideGenerator = style_guide.StyleGuideGenerator
+StyleGuideGenerator = style_guide_generator.StyleGuideGenerator
 BirchAgglomerativeKeywordClusterer = keyword_organiser.BirchAgglomerativeKeywordClusterer
 
 # Below are not used in this file, they are included for the user to easily
@@ -136,10 +136,12 @@ class Copycat:
       model to a GoogleAd.
     ad_copy_evaluator: The ad copy evaluator to use to evaluate the generated ad
       copies.
+    style_guide: The style guide to use to generate the ad copies.
   """
 
   ad_copy_vectorstore: ad_copy_generator.AdCopyVectorstore
   ad_format: GoogleAdFormat
+  style_guide: str = ""
 
   @property
   def ad_copy_evaluator(self) -> ad_copy_evaluator.AdCopyEvaluator:
@@ -389,6 +391,7 @@ class Copycat:
             params["ad_copy_vectorstore"]
         ),
         ad_format=GoogleAdFormat(**params["ad_format_params"]),
+        style_guide=params.get("style_guide", ""),
     )
 
   def to_dict(self) -> dict[str, Any]:
@@ -396,6 +399,7 @@ class Copycat:
     return {
         "ad_format_params": self.ad_format.model_dump(),
         "ad_copy_vectorstore": self.ad_copy_vectorstore.to_dict(),
+        "style_guide": self.style_guide,
     }
 
   @classmethod
@@ -567,7 +571,7 @@ class Copycat:
       *,
       keywords: list[str],
       keywords_specific_instructions: list[str] | None = None,
-      style_guide: str = "",
+      style_guide: str | None = None,
       system_instruction: str = DEFAULT_SYSTEM_INSTRUCTION,
       num_in_context_examples: int = 10,
       model_name: ModelName | str = ModelName.GEMINI_1_5_FLASH,
@@ -595,7 +599,8 @@ class Copycat:
         of keywords.
       keywords_specific_instructions: The list of keywords specific instructions
         to use. Defaults to a list of empty strings.
-      style_guide: The style guide to use.
+      style_guide: The style guide to use. If None, then the style guide from
+        the Copycat model will be used.
       system_instruction: The system instruction to use.
       num_in_context_examples: The number of in context examples to use.
       model_name: The name of the gemini model to use.
@@ -629,6 +634,8 @@ class Copycat:
     system_instruction_kwargs = (
         default_system_instruction_kwargs | system_instruction_kwargs
     )
+    if style_guide is None:
+      style_guide = self.style_guide
     system_instruction = ad_copy_generator.construct_system_instruction(
         system_instruction=system_instruction,
         style_guide=style_guide,
@@ -719,7 +726,7 @@ class Copycat:
       *,
       keywords: list[str],
       keywords_specific_instructions: list[str] | None = None,
-      style_guide: str = "",
+      style_guide: str | None = None,
       system_instruction: str = DEFAULT_SYSTEM_INSTRUCTION,
       num_in_context_examples: int = 10,
       model_name: ModelName | str = ModelName.GEMINI_1_5_FLASH,
@@ -741,7 +748,8 @@ class Copycat:
         of keywords.
       keywords_specific_instructions: The list of keywords specific instructions
         to use. Defaults to a list of empty strings.
-      style_guide: The style guide to use.
+      style_guide: The style guide to use. If None, then the style guide from
+        the Copycat model will be used.
       system_instruction: The system instruction to use.
       num_in_context_examples: The number of in context examples to use.
       model_name: The name of the chat model to use.
@@ -922,3 +930,74 @@ class Copycat:
         **static_params,
     )
     return pd.Series(generated_responses, index=data.index)
+
+  def generate_style_guide(
+      self,
+      *,
+      company_name: str,
+      files_uri: str = "",
+      additional_style_instructions: str = "",
+      model_name: ModelName | str = ModelName.GEMINI_1_5_PRO,
+      safety_settings: ad_copy_generator.SafetySettingsType | None = None,
+      temperature: float = 0.95,
+      top_k: int = 20,
+      top_p: float = 0.95,
+      use_exemplar_ads: bool = True,
+  ) -> str:
+    """Generates a style guide for the ad copy.
+
+    The style guide is returned and also stored in the Copycat instance.
+
+    Args:
+      company_name: The name of the company.
+      files_uri: The URI of the files to use to generate the style guide.
+      additional_style_instructions: Additional instructions to use to generate
+        the style guide.
+      model_name: The name of the chat model to use.
+      safety_settings: The safety settings for the chat model.
+      temperature: The temperature to use for the chat model.
+      top_k: The top-k to use for the chat model.
+      top_p: The top-p to use for the chat model.
+      use_exemplar_ads: Whether to use exemplar ads to generate the style guide.
+
+    Returns:
+      The generated style guide.
+
+    Raises:
+      ValueError: If the company name is not provided.
+      ValueError: If the files URI is not provided and use_exemplar_ads is
+        False.
+      RuntimeError: If the style guide generation was not successful.
+    """
+    if not use_exemplar_ads and not files_uri:
+      raise ValueError(
+          "Must either provide a files URI or set use_exemplar_ads to True."
+      )
+    if not company_name:
+      raise ValueError("Must provide a company name.")
+
+    generator = StyleGuideGenerator()
+    if files_uri:
+      LOGGER.info("Checking for files in the GCP bucket %s", files_uri)
+      generator.get_all_files(files_uri)
+
+    model_response = generator.generate_style_guide(
+        brand_name=company_name,
+        ad_copy_vectorstore=self.ad_copy_vectorstore,
+        additional_style_instructions=additional_style_instructions,
+        model_name=model_name,
+        safety_settings=safety_settings,
+        temperature=temperature,
+        top_k=top_k,
+        top_p=top_p,
+    ).candidates[0]
+    if model_response.finish_reason is not ad_copy_generator.FinishReason.STOP:
+      message = (
+          "Style guide generation was not successful, complete response:"
+          f" {model_response}"
+      )
+      LOGGER.error(message)
+      raise RuntimeError(message)
+
+    self.style_guide = model_response.content.text
+    return self.style_guide

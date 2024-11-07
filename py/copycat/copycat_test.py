@@ -748,6 +748,149 @@ class CopycatTest(parameterized.TestCase):
         ),
     )
 
+  @testing_utils.PatchGenerativeModel(response="Generated style guide.")
+  def test_generate_style_guide_returns_style_guide_and_updates_attribute(
+      self, generative_model_patcher
+  ):
+
+    copycat_instance = copycat.Copycat.create_from_pandas(
+        training_data=self.training_data(20),
+        embedding_model_name="text-embedding-004",
+        ad_format="text_ad",
+        vectorstore_exemplar_selection_method="random",
+    )
+    style_guide = copycat_instance.generate_style_guide(
+        company_name="My company"
+    )
+    self.assertEqual(style_guide, "Generated style guide.")
+    self.assertEqual(copycat_instance.style_guide, "Generated style guide.")
+
+  def test_generate_style_guide_raises_exception_if_model_fails_to_generate(
+      self,
+  ):
+    failed_response = generative_models.GenerationResponse.from_dict({
+        "candidates": [{
+            "finish_reason": generative_models.FinishReason.SAFETY,
+        }]
+    })
+
+    with testing_utils.PatchGenerativeModel(response=failed_response):
+      copycat_instance = copycat.Copycat.create_from_pandas(
+          training_data=self.training_data(20),
+          embedding_model_name="text-embedding-004",
+          ad_format="text_ad",
+          vectorstore_exemplar_selection_method="random",
+      )
+
+      with self.assertRaises(RuntimeError):
+        copycat_instance.generate_style_guide(
+            company_name="My company",
+            additional_style_instructions="Some additional style instructions.",
+            model_name="gemini-1.5-flash-001",
+            temperature=0.95,
+            top_k=20,
+            top_p=0.95,
+        )
+
+  @parameterized.named_parameters(
+      dict(testcase_name="empty company name", args=dict(company_name="")),
+      dict(
+          testcase_name="no exemplars or files uri provided",
+          args=dict(
+              company_name="My company", use_exemplar_ads=False, files_uri=""
+          ),
+      ),
+  )
+  @testing_utils.PatchGenerativeModel(response="Generated style guide.")
+  def test_generate_style_guide_raises_exception_for_bad_args(
+      self, generative_model_patcher, args
+  ):
+
+    copycat_instance = copycat.Copycat.create_from_pandas(
+        training_data=self.training_data(20),
+        embedding_model_name="text-embedding-004",
+        ad_format="text_ad",
+        vectorstore_exemplar_selection_method="random",
+    )
+
+    with self.assertRaises(ValueError):
+      copycat_instance.generate_style_guide(**args)
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="no style guide",
+          generate_style_guide=False,
+          style_guide_arg=None,
+          expected_system_instruction="Example system instruction",
+      ),
+      dict(
+          testcase_name="pass style guide",
+          generate_style_guide=False,
+          style_guide_arg="This is my style guide.",
+          expected_system_instruction=(
+              "Example system instruction\n\nThis is my style guide."
+          ),
+      ),
+      dict(
+          testcase_name="generated style guide",
+          generate_style_guide=True,
+          style_guide_arg=None,
+          expected_system_instruction=(
+              "Example system instruction\n\nGenerated style guide."
+          ),
+      ),
+      dict(
+          testcase_name="generated style guide overridden",
+          generate_style_guide=True,
+          style_guide_arg="This is my style guide.",
+          expected_system_instruction=(
+              "Example system instruction\n\nThis is my style guide."
+          ),
+      ),
+      dict(
+          testcase_name="generated style guide overridden with nothing",
+          generate_style_guide=True,
+          style_guide_arg="",
+          expected_system_instruction="Example system instruction",
+      ),
+  )
+  @testing_utils.PatchGenerativeModel(response="Generated style guide.")
+  def test_construct_text_generation_requests_uses_generated_style_guide(
+      self,
+      generative_model_patcher,
+      generate_style_guide,
+      style_guide_arg,
+      expected_system_instruction,
+  ):
+    copycat_instance = copycat.Copycat.create_from_pandas(
+        training_data=self.training_data(n_rows=20),
+        embedding_model_name="text-embedding-004",
+        ad_format="text_ad",
+        vectorstore_exemplar_selection_method="random",
+    )
+    if generate_style_guide:
+      copycat_instance.generate_style_guide(
+          company_name="My company",
+          additional_style_instructions="Some additional style instructions.",
+          model_name="gemini-1.5-flash-001",
+          temperature=0.95,
+          top_k=20,
+          top_p=0.95,
+      )
+
+    request = (
+        copycat_instance.construct_text_generation_requests_for_new_ad_copy(
+            keywords=["my keyword 1, my keyword 2"],
+            existing_headlines=[["Headline 1"]],
+            existing_descriptions=[["Description 1"]],
+            keywords_specific_instructions=[""],
+            num_in_context_examples=1,
+            system_instruction="Example system instruction",
+            style_guide=style_guide_arg,
+        )[0]
+    )
+    self.assertEqual(expected_system_instruction, request.system_instruction)
+
   @testing_utils.PatchGenerativeModel(
       response='{"descriptions": ["generated description"]}'
   )
@@ -1129,6 +1272,7 @@ class CopycatTest(parameterized.TestCase):
         ad_format="text_ad",
         vectorstore_exemplar_selection_method="random",
     )
+    copycat_instance.style_guide = "This is my style guide."
 
     reloaded_copycat_instance = copycat.Copycat.from_dict(
         copycat_instance.to_dict()
@@ -1166,6 +1310,7 @@ class CopycatTest(parameterized.TestCase):
         ad_format="text_ad",
         vectorstore_exemplar_selection_method="random",
     )
+    copycat_instance.style_guide = "This is my style guide."
 
     reloaded_copycat_instance = copycat.Copycat.from_json(
         copycat_instance.to_json()

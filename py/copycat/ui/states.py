@@ -75,6 +75,7 @@ class CopycatParamsState:
   style_guide_top_p: float = 0.95
   style_guide_files_uri: str = ""
   style_guide_additional_instructions: str = ""
+  style_guide_use_exemplar_ads: bool = True
   style_guide: str = ""
   generated_style_guide: str = ""
 

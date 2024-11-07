@@ -648,29 +648,24 @@ def generate_style_guide(event: me.ClickEvent):
       location=params.vertex_ai_location,
   )
 
-  copycat_instance = load_copycat_from_sheet(sheet)
-
   send_log("Preparing to generate style guide")
-  style_guide_generator = copycat.StyleGuideGenerator()
   if params.style_guide_files_uri:
     send_log(
         f"Checking for files in the GCP bucket {params.style_guide_files_uri}"
     )
-    style_guide_generator.get_all_files(params.style_guide_files_uri)
 
-  send_log("Generating style guide")
-  model_response = style_guide_generator.generate_style_guide(
-      brand_name=params.company_name,
-      ad_copy_vectorstore=copycat_instance.ad_copy_vectorstore,
+  copycat_instance = load_copycat_from_sheet(sheet)
+  params.style_guide = copycat_instance.generate_style_guide(
+      company_name=params.company_name,
       additional_style_instructions=params.style_guide_additional_instructions,
       model_name=params.style_guide_chat_model_name,
       safety_settings=copycat.ALL_SAFETY_SETTINGS_ONLY_HIGH,
       temperature=params.style_guide_temperature,
       top_k=params.style_guide_top_k,
       top_p=params.style_guide_top_p,
+      use_exemplar_ads=params.style_guide_use_exemplar_ads,
+      files_uri=params.style_guide_files_uri,
   )
-
-  params.style_guide = model_response.candidates[0].content.text
   send_log("Style guide generated")
 
   save_params_to_google_sheet(event)
