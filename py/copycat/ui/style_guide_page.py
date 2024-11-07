@@ -97,8 +97,31 @@ def style_guide():
               type="number",
               style=me.Style(margin=me.Margin.symmetric(horizontal=5)),
           )
+        me.slide_toggle(
+            label="Use exemplar ads to generate Style Guide",
+            on_change=event_handlers.update_copycat_parameter_from_slide_toggle,
+            key="style_guide_use_exemplar_ads",
+            checked=params.style_guide_use_exemplar_ads,
+        )
         me.text(
-            "Google Cloud Bucket URI containing supplementary materials:",
+            "Additional instructions for generating the style guide"
+            " (optional):",
+            style=me.Style(margin=me.Margin.symmetric(vertical=15)),
+        )
+        with me.box(style=me.Style(width="40%")):
+          me.input(
+              label="Additional Instructions",
+              on_blur=event_handlers.update_copycat_parameter,
+              key="style_guide_additional_instructions",
+              value=str(params.style_guide_additional_instructions),
+              appearance="outline",
+              style=me.Style(
+                  margin=me.Margin.symmetric(horizontal=5), width="100%"
+              ),
+          )
+        me.text(
+            "Google Cloud Bucket URI containing supplementary materials"
+            " (optional):",
             style=me.Style(margin=me.Margin(bottom=15)),
         )
 
