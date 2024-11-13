@@ -16,6 +16,8 @@
 
 import mesop as me
 
+from copycat.ui import event_handlers
+from copycat.ui import states
 from copycat.ui import styles
 
 
@@ -48,7 +50,7 @@ def header_bar(**kwargs) -> None:
           display="flex",
           gap=5,
           justify_content="space-between",
-          **kwargs
+          **kwargs,
       )
   ):
     me.slot()
@@ -66,7 +68,7 @@ def conditional_tooltip(
     disabled: bool,
     disabled_tooltip: str = "",
     enabled_tooltip: str = "",
-    **kwargs
+    **kwargs,
 ) -> None:
   """Adds a tooltip to a UI element depending on whether it is disabled."""
   if disabled and disabled_tooltip:
@@ -134,3 +136,72 @@ def dialog(is_open: bool) -> None:
           )
       ):
         me.slot()
+
+
+@me.component
+def snackbar(
+    *,
+    snackbar_is_visible_name: str,
+    label: str,
+    action_label: str | None = None,
+):
+  """Creates a snackbar in the center of the screen.
+
+  Args:
+    snackbar_is_visible_name: The name of the app state parameter that controls
+      the visibility of the snackbar.
+    label: Message for the snackbar
+    action_label: Optional message for the action of the snackbar
+  """
+  is_visible = getattr(me.state(states.AppState), snackbar_is_visible_name)
+  with me.box(
+      style=me.Style(
+          display="block" if is_visible else "none",
+          height="100%",
+          overflow_x="auto",
+          overflow_y="auto",
+          position="fixed",
+          pointer_events="none",
+          width="100%",
+          z_index=1000,
+      )
+  ):
+    with me.box(
+        style=me.Style(
+            align_items="end",
+            height="100%",
+            display="flex",
+            justify_content="center",
+        )
+    ):
+      with me.box(
+          style=me.Style(
+              align_items="center",
+              background=me.theme_var("on-surface-variant"),
+              border_radius=5,
+              box_shadow=(
+                  "0 3px 1px -2px #0003, 0 2px 2px #00000024, 0 1px 5px"
+                  " #0000001f"
+              ),
+              display="flex",
+              font_size=14,
+              justify_content="space-between",
+              margin=me.Margin.all(10),
+              padding=me.Padding(top=5, bottom=5, right=5, left=15)
+              if action_label
+              else me.Padding.all(15),
+              pointer_events="auto",
+              width=300,
+          )
+      ):
+        me.text(
+            label,
+            style=me.Style(color=me.theme_var("surface-container-lowest")),
+        )
+        if action_label:
+          me.button(
+              action_label,
+              on_click=event_handlers.on_click_snackbar_close,
+              key=snackbar_is_visible_name,
+              style=me.Style(color=me.theme_var("primary-container")),
+          )

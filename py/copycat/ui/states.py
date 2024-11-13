@@ -13,12 +13,22 @@
 # limitations under the License.
 
 """States for the Copycat UI."""
+import dataclasses
 import logging
 
 import mesop as me
 
 from copycat import ad_copy_generator
 from copycat import google_ads
+
+
+DEFAULT_GCP_PROJECT_ID = ""
+
+
+def set_default_gcp_project_id(project_id: str) -> None:
+  """Sets the default GCP project ID."""
+  global DEFAULT_GCP_PROJECT_ID
+  DEFAULT_GCP_PROJECT_ID = project_id
 
 
 @me.stateclass
@@ -35,11 +45,15 @@ class AppState:
   has_copycat_instance: bool = False
   new_ad_preview_request: str = ""
   log_level: int = logging.INFO
+  show_copycat_instance_created_snackbar: bool = False
+  show_ad_copy_generated_snackbar: bool = False
 
 
 @me.stateclass
 class CopycatParamsState:
-  vertex_ai_project_id: str = ""
+  vertex_ai_project_id: str = dataclasses.field(
+      default_factory=lambda: DEFAULT_GCP_PROJECT_ID
+  )
   vertex_ai_location: str = "us-central1"
 
   company_name: str = ""

@@ -370,6 +370,11 @@ def show_hide_google_sheet(event: me.ClickEvent) -> None:
   state.display_google_sheet = not state.display_google_sheet
 
 
+def on_click_snackbar_close(event: me.ClickEvent):
+  state = me.state(states.AppState)
+  setattr(state, event.key, False)
+
+
 def validate_sheet(event: me.ClickEvent) -> None:
   """Validates the Google Sheet.
 
@@ -627,6 +632,7 @@ def build_new_copycat_instance(event: me.ClickEvent):
   state.has_copycat_instance = True
 
   send_log("Copycat instance stored in google sheet.")
+  state.show_copycat_instance_created_snackbar = True
 
 
 def generate_style_guide(event: me.ClickEvent):
@@ -927,10 +933,13 @@ def generate_ads(event: me.ClickEvent):
       safety_settings=copycat.ALL_SAFETY_SETTINGS_ONLY_HIGH,
       style_guide=params.style_guide if params.new_ads_use_style_guide else "",
   )
+  limit = params.new_ads_generation_limit
+  if limit == 0:
+    limit = None
   data_iterator = data_utils.iterate_over_batches(
       generation_data,
-      params.new_ads_batch_size,
-      params.new_ads_generation_limit,
+      batch_size=params.new_ads_batch_size,
+      limit_rows=limit,
   )
   for batch_number, generation_batch in enumerate(data_iterator):
     send_log(f"Generating batch {batch_number+1}")
@@ -984,3 +993,4 @@ def generate_ads(event: me.ClickEvent):
     sheet["Generated Ads"] = updated_complete_data[column_order]
 
   send_log("Generation Complete")
+  state.show_ad_copy_generated_snackbar = True

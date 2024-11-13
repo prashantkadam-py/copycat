@@ -75,11 +75,18 @@ def starting_dialog(state: states.AppState):
 
     with components.column(align_items="center", width="100%", gap=0):
       me.text("Welcome to Copycat", type="headline-5")
-      me.text("Please select a Google Sheet to load, or create a new one.")
+      me.text(
+          "Please select a Google Sheet to load, or create a new one. Note:"
+          " after entering the name or URL, you may first need to click outside"
+          " the input box for the buttons to activate.",
+          style=me.Style(width=500),
+      )
       me.text(
           "WARNING: The data in the Google Sheet you use can be edited by"
-          " Copycat, so if you are loading an existing Google Sheet then it's"
-          " best to make a copy first and use the copy here.",
+          " Copycat, so if you have your data in another google sheet, it's"
+          " best to select 'Create New Sheet' here and then copy the data to"
+          " the new sheet. Only load an existing sheet if it was a previous"
+          " Copycat sheet that you want to continue working on.",
           style=me.Style(
               margin=me.Margin.all(15),
               color=me.theme_var("error"),
@@ -283,6 +290,22 @@ def home():
   state = me.state(states.AppState)
 
   starting_dialog(state)
+  components.snackbar(
+      snackbar_is_visible_name="show_copycat_instance_created_snackbar",
+      label=(
+          "Copycat instance successfully created. You can now generate a style"
+          " guide and new ads."
+      ),
+      action_label="Okay",
+  )
+  components.snackbar(
+      snackbar_is_visible_name="show_ad_copy_generated_snackbar",
+      label=(
+          "Ad copy generation complete. You can view the generated ads in the"
+          " Google Sheet in the 'Generated Ads' tab."
+      ),
+      action_label="Okay",
+  )
 
   with components.column(height="100%", width="100%", gap=0):
     main_copycat_header(state)

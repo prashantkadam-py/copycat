@@ -63,45 +63,57 @@ def generation_settings_section(params: states.CopycatParamsState) -> None:
           checked=params.new_ads_use_style_guide,
       )
 
-    with components.row():
-      me.input(
-          label="N In-context Examples",
-          on_blur=event_handlers.update_copycat_parameter,
-          key="new_ads_num_in_context_examples",
-          value=str(params.new_ads_num_in_context_examples),
-          appearance="outline",
-          type="number",
-          style=me.Style(margin=me.Margin.symmetric(horizontal=5)),
-      )
-      me.input(
-          label="Temperature",
-          on_blur=event_handlers.update_copycat_parameter,
-          key="new_ads_temperature",
-          value=str(params.new_ads_temperature),
-          appearance="outline",
-          type="number",
-          style=me.Style(margin=me.Margin.symmetric(horizontal=5)),
-      )
+    with components.row(width="100%"):
+      with me.box(
+          style=me.Style(width="45%", margin=me.Margin.symmetric(horizontal=5))
+      ):
+        me.input(
+            label="N In-context Examples",
+            on_blur=event_handlers.update_copycat_parameter,
+            key="new_ads_num_in_context_examples",
+            value=str(params.new_ads_num_in_context_examples),
+            appearance="outline",
+            type="number",
+            style=me.Style(width="100%"),
+        )
+      with me.box(
+          style=me.Style(width="45%", margin=me.Margin.symmetric(horizontal=5))
+      ):
+        me.input(
+            label="Temperature",
+            on_blur=event_handlers.update_copycat_parameter,
+            key="new_ads_temperature",
+            value=str(params.new_ads_temperature),
+            appearance="outline",
+            type="number",
+            style=me.Style(width="100%"),
+        )
 
-    with components.row():
-      me.input(
-          label="Top-K",
-          on_blur=event_handlers.update_copycat_parameter,
-          key="new_ads_top_k",
-          value=str(params.new_ads_top_k),
-          appearance="outline",
-          type="number",
-          style=me.Style(margin=me.Margin.symmetric(horizontal=5)),
-      )
-      me.input(
-          label="Top-P",
-          on_blur=event_handlers.update_copycat_parameter,
-          key="new_ads_top_p",
-          value=str(params.new_ads_top_p),
-          appearance="outline",
-          type="number",
-          style=me.Style(margin=me.Margin.symmetric(horizontal=5)),
-      )
+    with components.row(width="100%"):
+      with me.box(
+          style=me.Style(width="45%", margin=me.Margin.symmetric(horizontal=5))
+      ):
+        me.input(
+            label="Top-K",
+            on_blur=event_handlers.update_copycat_parameter,
+            key="new_ads_top_k",
+            value=str(params.new_ads_top_k),
+            appearance="outline",
+            type="number",
+            style=me.Style(width="100%"),
+        )
+      with me.box(
+          style=me.Style(width="45%", margin=me.Margin.symmetric(horizontal=5))
+      ):
+        me.input(
+            label="Top-P",
+            on_blur=event_handlers.update_copycat_parameter,
+            key="new_ads_top_p",
+            value=str(params.new_ads_top_p),
+            appearance="outline",
+            type="number",
+            style=me.Style(width="100%"),
+        )
 
     with components.row(gap=10, margin=me.Margin(bottom=20)):
       me.slide_toggle(
@@ -118,15 +130,18 @@ def generation_settings_section(params: states.CopycatParamsState) -> None:
       )
 
     with components.row():
-      me.input(
-          label="Number of Versions per Ad Group",
-          on_blur=event_handlers.update_copycat_parameter,
-          key="new_ads_number_of_versions",
-          value=str(params.new_ads_number_of_versions),
-          appearance="outline",
-          type="number",
-          style=me.Style(margin=me.Margin.symmetric(horizontal=5), width=500),
-      )
+      with me.box(
+          style=me.Style(width="45%", margin=me.Margin.symmetric(horizontal=5))
+      ):
+        me.input(
+            label="Number of Versions per Ad Group",
+            on_blur=event_handlers.update_copycat_parameter,
+            key="new_ads_number_of_versions",
+            value=str(params.new_ads_number_of_versions),
+            appearance="outline",
+            type="number",
+            style=me.Style(width="100%"),
+        )
 
 
 def preview_prompt_section(state: states.AppState) -> None:
@@ -157,7 +172,14 @@ def generate_new_ads_section(
 ) -> None:
   """Renders the generate new ads section of the generate new ads page."""
   with components.rounded_box_section(title="Generate Ads", width="100%"):
-    me.text("Generate all the ads in batches, starting from the top.")
+    me.text(
+        "Copycat will generate ads in batches. The batch size is the number of"
+        " ads to generate at a time, and the limit is the total number of ads"
+        " to generate. For example, a batch size of 15 and a limit of 25 would"
+        " mean two batches are generated, the first 15 ads and then the next 10"
+        " ads. The ads will be written to the Google Sheet in a tab named"
+        " 'Generated Ads'"
+    )
     with components.row(gap=15, align_items="center", margin=me.Margin(top=15)):
       with me.tooltip(
           message=(

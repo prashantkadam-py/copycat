@@ -27,10 +27,10 @@ def setup():
   """
   params = me.state(states.CopycatParamsState)
   with components.column(width="100%"):
-    with components.rounded_box_section("Vertex AI"):
+    with components.rounded_box_section("Google Cloud Project"):
       with components.row():
         me.text(
-            "Copycat uses Vertex AI to call Gemini. You must "
+            "Copycat uses Vertex AI on Google Cloud to call Gemini. You must "
             + "provide a valid Google Cloud Project for this, with "
             + "the Vertex AI API enabled.",
             style=me.Style(margin=me.Margin(bottom=15)),
@@ -38,7 +38,7 @@ def setup():
 
       with components.row():
         me.input(
-            label="Vertex AI Project ID",
+            label="Google Cloud Project ID",
             key="vertex_ai_project_id",
             on_blur=event_handlers.update_copycat_parameter,
             value=params.vertex_ai_project_id,
@@ -48,7 +48,7 @@ def setup():
             ),
         )
         me.input(
-            label="Vertex AI Location",
+            label="Google Cloud Project Location",
             key="vertex_ai_location",
             on_blur=event_handlers.update_copycat_parameter,
             value=params.vertex_ai_location,
