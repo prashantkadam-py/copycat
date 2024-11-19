@@ -47,7 +47,7 @@ To cite this repository:
   author = {Sam Bailey, Piet Snel, Christiane Ahlheim, Sumedha Menon, Hector Parra, Jaime Martínez, Letizia Bertolaja},
   title = Copycat - AI Generated Google Search Ad Copy that Matches Your Brand Style},
   url = {https://github.com/google-marketing-solutions/copycat},
-  version = {0.0.1},
+  version = {0.0.2},
   year = {2024},
 }
 ```

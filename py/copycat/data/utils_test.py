@@ -716,6 +716,8 @@ class ExplodeGeneratedAdObjectTest(parameterized.TestCase):
         "Keyword Similarity": [0.6, 0.35],
         "Warnings": ["- warning 1\n- warning 2", ""],
         "Errors": ["- error 1\n- error 2", ""],
+        "Headline Count": [2, 2],
+        "Description Count": [2, 2],
     })
     expected_data["generated_ad_object"] = data["generated_ad_object"].copy()
 

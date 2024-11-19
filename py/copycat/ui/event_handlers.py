@@ -980,11 +980,15 @@ def generate_ads(event: me.ClickEvent):
         col
         for col in updated_complete_data.columns
         if col.startswith("Headline ")
+        and col.split(" ")[1].isdigit()
+        and len(col.split(" ")) == 2
     )
     column_order.extend(
         col
         for col in updated_complete_data.columns
         if col.startswith("Description ")
+        and col.split(" ")[1].isdigit()
+        and len(col.split(" ")) == 2
     )
     column_order.extend(
         col for col in updated_complete_data.columns if col not in column_order

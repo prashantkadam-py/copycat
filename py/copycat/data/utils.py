@@ -485,6 +485,8 @@ def explode_generated_ad_object(
     headlines_column="headlines",
     descriptions_column="descriptions",
     success_column="Success",
+    headline_count_column="Headline Count",
+    description_count_column="Description Count",
     headlines_are_memorised_column="Headlines are Memorized",
     descriptions_are_memorised_column="Descriptions are Memorized",
     style_similarity_column="Style Similarity",
@@ -502,6 +504,10 @@ def explode_generated_ad_object(
     descriptions_column: The name of the column to store the descriptions.
     success_column: The name of the column to store whether the generation was
       successful.
+    headline_count_column: The name of the column to store the number of
+      headlines.
+    description_count_column: The name of the column to store the number of
+      descriptions.
     headlines_are_memorised_column: The name of the column to store whether the
       headlines are memorized.
     descriptions_are_memorised_column: The name of the column to store whether
@@ -545,6 +551,12 @@ def explode_generated_ad_object(
   )
   data[error_message_column] = data[generated_ad_object_column].apply(
       lambda x: x.error_message
+  )
+  data[headline_count_column] = data[generated_ad_object_column].apply(
+      lambda x: x.google_ad.headline_count
+  )
+  data[description_count_column] = data[generated_ad_object_column].apply(
+      lambda x: x.google_ad.description_count
   )
 
   return data

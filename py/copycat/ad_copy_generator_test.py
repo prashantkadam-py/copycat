@@ -1090,31 +1090,31 @@ class AdCopyGeneratorTest(parameterized.TestCase):
         response_mime_type="application/json",
     )
     expected_generation_config["response_schema"] = {
-        "type_": "OBJECT",
         "properties": {
             "headlines": {
-                "type_": "ARRAY",
                 "items": {
-                    "type_": "STRING",
                     "description": (
                         "The headlines for the ad. Must be fewer than 30"
                         " characters."
                     ),
+                    "type": "STRING",
                 },
+                "type": "ARRAY",
             },
             "descriptions": {
-                "type_": "ARRAY",
                 "items": {
-                    "type_": "STRING",
                     "description": (
                         "The descriptions for the ad. Must be fewer than 90"
                         " characters."
                     ),
+                    "type": "STRING",
                 },
+                "type": "ARRAY",
             },
         },
         "required": ["headlines", "descriptions"],
         "property_ordering": ["headlines", "descriptions"],
+        "type": "OBJECT",
     }
 
     self.assertDictEqual(
