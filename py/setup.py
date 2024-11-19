@@ -66,7 +66,7 @@ GOOGLE_SHEETS_REQUIREMENTS = _parse_requirements(
 )
 
 setuptools.setup(
-    name="copycat",
+    name="gtech-copycat",
     version=VERSION,
     python_requires=">=3.10",
     description=(
