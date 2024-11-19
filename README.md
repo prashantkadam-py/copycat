@@ -1,4 +1,6 @@
-<img align="left"  height=230, src="./images/copycat_logo.png" alt="copycat_logo" />
+<p align="center">
+<img height=200 src="./images/copycat_logo.png" alt="copycat_logo" />
+</p>
 
 # Copycat: AI-Generated Google Search Ad Copy That Matches Your Brand Style
 
@@ -10,8 +12,6 @@
 [![Open in Colab](https://img.shields.io/badge/Python_Quickstart-blue?style=flat&logo=google%20colab&labelColor=grey)](https://colab.research.google.com/github/google-marketing-solutions/copycat/blob/main/copycat_demo.ipynb)
 
 **Disclaimer: This is not an official Google product.**
-
-<br />
 
 [Overview](#overview) •
 [Getting started](#getting-started) •
@@ -64,7 +64,7 @@ Explore Copycat with these Colab notebooks:
 
 Copycat learns your brand style from your existing Google Search Ads to generate new ads for new keywords. Here's the process:
 
-<img align="left", src="./images/copycat_prompt_diagram.png" alt="copycat_prompt_diagram" />
+<img align="left" src="./images/copycat_prompt_diagram.png" alt="copycat_prompt_diagram" />
 
 1. **Training Ads:** Provide examples of high-quality search ads (headlines, descriptions, and targeted keywords).  These "training ads" should come directly from your Google Ads account, we recommend selecting high quality ad copies (100 or more varied example ads is optimal, gut Copycat can work with fewer, see the FAQs). An [example Google Ads Script](https://github.com/google-marketing-solutions/copycat/blob/main/google_ads_scripts/ads_data_pull.js) is provided to help with this.
 
