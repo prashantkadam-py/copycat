@@ -28,6 +28,178 @@ from copycat.data import utils as data_utils
 from copycat.ui import states
 
 
+def _force_index_columns_if_possible(
+    data: pd.DataFrame,
+    index_columns: list[str],
+) -> bool:
+  """Force the index columns to be set if they exist as columns.
+
+  Sets the index of the data inplace, and returns True if the index columns are
+  now correct, False otherwise.
+
+  Args:
+    data: The data to set the index columns on.
+    index_columns: The columns to set as the index columns.
+
+  Returns:
+    True if the index columns are now correct, False otherwise.
+  """
+  if data.index.names == [None] and set(index_columns).issubset(
+      data.columns.values
+  ):
+    data.set_index(index_columns, inplace=True)
+  return data.index.names == index_columns
+
+
+def read_training_ads(
+    sheet: sheets.GoogleSheet, raise_if_bad_index: bool = True
+) -> pd.DataFrame:
+  """Reads the training ads from the Google Sheet.
+
+  The google sheet should contain a tab named "Training Ads" with the following
+  frozen columns: Campaign ID and Ad Group, which are used as the index. If
+  there are no frozen columns but the columns Campaign ID and Ad Group exist,
+  then they are used as the index. Otherwise, an error is raised.
+
+  Args:
+    sheet: The Google Sheet to read the training ads from.
+    raise_if_bad_index: If True, then an error is raised if the training ads do
+      not have the required index columns.
+
+  Returns:
+    The training ads as a pandas DataFrame.
+
+  Raises:
+    ValueError: If the training ads do not have the required index columns.
+  """
+  index_columns = ["Campaign ID", "Ad Group"]
+  training_ads = sheet[sheets.TEMPLATE_EXISTING_ADS_WORKSHEET_NAME]
+  has_correct_index = _force_index_columns_if_possible(
+      training_ads, index_columns
+  )
+  if not has_correct_index and raise_if_bad_index:
+    message = (
+        f"Training Ads requires index columns: {index_columns}, but found index"
+        f" = {training_ads.index.names} and columns = {training_ads.columns}."
+    )
+    send_log(message, level=logging.ERROR)
+    raise ValueError(message)
+  return training_ads
+
+
+def read_new_keywords(
+    sheet: sheets.GoogleSheet, raise_if_bad_index: bool = True
+) -> pd.DataFrame:
+  """Reads the new keywords from the Google Sheet.
+
+  The google sheet should contain a tab named "New Keywords" with the following
+  frozen columns: Campaign ID and Ad Group, which are used as the index. If
+  there are no frozen columns but the columns Campaign ID and Ad Group exist,
+  then they are used as the index. Otherwise, an error is raised.
+
+  Args:
+    sheet: The Google Sheet to read the new keywords from.
+    raise_if_bad_index: If True, then an error is raised if the new keywords do
+      not have the required index columns.
+
+  Returns:
+    The new keywords as a pandas DataFrame.
+
+  Raises:
+    ValueError: If the new keywords do not have the required index columns.
+  """
+  index_columns = ["Campaign ID", "Ad Group"]
+  new_keywords = sheet[sheets.TEMPLATE_NEW_KEYWORDS_WORKSHEET_NAME]
+  has_correct_index = _force_index_columns_if_possible(
+      new_keywords, index_columns
+  )
+  if not has_correct_index and raise_if_bad_index:
+    message = (
+        f"New Keywords requires index columns: {index_columns}, but found index"
+        f" = {new_keywords.index.names} and columns = {new_keywords.columns}."
+    )
+    send_log(message, level=logging.ERROR)
+    raise ValueError(message)
+  return new_keywords
+
+
+def read_extra_instructions(
+    sheet: sheets.GoogleSheet, raise_if_bad_index: bool = True
+) -> pd.DataFrame:
+  """Reads the extra instructions from the Google Sheet.
+
+  The google sheet should contain a tab named "Extra Instructions for New Ads"
+  with the following frozen columns: Campaign ID, Ad Group and Version, which
+  are used as the index. If there are no frozen columns but the columns Campaign
+  ID, Ad Group and Version exist, then they are used as the index. Otherwise, an
+  error is raised.
+
+  Args:
+    sheet: The Google Sheet to read the extra instructions from.
+    raise_if_bad_index: If True, then an error is raised if the extra
+      instructions do not have the required index columns.
+
+  Returns:
+    The extra instructions as a pandas DataFrame.
+
+  Raises:
+    ValueError: If the extra instructions do not have the required index
+    columns.
+  """
+  index_columns = ["Campaign ID", "Ad Group", "Version"]
+  extra_instructions = sheet[sheets.TEMPLATE_EXTRA_INSTRUCTIONS_WORKSHEET_NAME]
+  has_correct_index = _force_index_columns_if_possible(
+      extra_instructions, index_columns
+  )
+  if not has_correct_index and raise_if_bad_index:
+    message = (
+        f"Extra Instructions requires index columns: {index_columns}, but found"
+        f" index = {extra_instructions.index.names} and columns ="
+        f" {extra_instructions.columns}."
+    )
+    send_log(message, level=logging.ERROR)
+    raise ValueError(message)
+  return extra_instructions
+
+
+def read_generated_ads(
+    sheet: sheets.GoogleSheet, raise_if_bad_index: bool = True
+) -> pd.DataFrame:
+  """Reads the generated ads from the Google Sheet.
+
+  The google sheet should contain a tab named "Generated Ads"
+  with the following frozen columns: Campaign ID, Ad Group and Version, which
+  are used as the index. If there are no frozen columns but the columns Campaign
+  ID, Ad Group and Version exist, then they are used as the index. Otherwise, an
+  error is raised.
+
+  Args:
+    sheet: The Google Sheet to read the generated ads from.
+    raise_if_bad_index: If True, then an error is raised if the generated ads do
+      not have the required index columns.
+
+  Returns:
+    The generated ads as a pandas DataFrame.
+
+  Raises:
+    ValueError: If the generated ads do not have the required index columns.
+  """
+  index_columns = ["Campaign ID", "Ad Group", "Version"]
+  generated_ads = sheet["Generated Ads"]
+  has_correct_index = _force_index_columns_if_possible(
+      generated_ads, index_columns
+  )
+  if not has_correct_index and raise_if_bad_index:
+    message = (
+        f"Extra Instructions requires index columns: {index_columns}, but found"
+        f" index = {generated_ads.index.names} and columnms ="
+        f" {generated_ads.columns}."
+    )
+    send_log(message, level=logging.ERROR)
+    raise ValueError(message)
+  return generated_ads
+
+
 def update_copycat_parameter(event: me.InputEvent) -> None:
   """Updates a parameter in the CopycatParamsState.
 
@@ -435,6 +607,9 @@ def validate_sheet(event: me.ClickEvent) -> None:
       continue
 
     worksheet = sheet[sheet_name]
+    _force_index_columns_if_possible(
+        worksheet, required_index_names[sheet_name]
+    )
     actual_index_names = list(worksheet.index.names)
     if required_index_names[sheet_name] != actual_index_names:
       send_log(
@@ -474,7 +649,7 @@ def validate_sheet(event: me.ClickEvent) -> None:
       send_log(f"{sheet_name} has {n_rows:,} rows")
 
   # Log the number of headline and description columns in the training ads
-  training_ads = sheet["Training Ads"]
+  training_ads = read_training_ads(sheet, raise_if_bad_index=False)
   n_headline_columns = len(
       [c for c in training_ads.columns if c.startswith("Headline")]
   )
@@ -574,7 +749,7 @@ def build_new_copycat_instance(event: me.ClickEvent):
   )
 
   train_data = data_utils.collapse_headlines_and_descriptions(
-      sheet["Training Ads"]
+      read_training_ads(sheet)
   )
   train_data = train_data.rename({"Keywords": "keywords"}, axis=1)
   train_data = train_data[["headlines", "descriptions", "keywords"]]
@@ -698,8 +873,8 @@ def _prepare_new_ads_for_generation(
   Returns:
     A tuple containing the new generations data and the complete data.
   """
-  new_keywords_data = sheet["New Keywords"]
-  additional_instructions_data = sheet["Extra Instructions for New Ads"]
+  new_keywords_data = read_new_keywords(sheet)
+  additional_instructions_data = read_extra_instructions(sheet)
   additional_instructions_data.index = (
       additional_instructions_data.index.set_levels(
           additional_instructions_data.index.get_level_values("Version").astype(
@@ -711,7 +886,7 @@ def _prepare_new_ads_for_generation(
   )
 
   if "Generated Ads" in sheet:
-    existing_generations_data = sheet["Generated Ads"]
+    existing_generations_data = read_generated_ads(sheet)
     if "Headline 1" not in existing_generations_data.columns:
       existing_generations_data = None
   else:
