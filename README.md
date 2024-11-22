@@ -41,7 +41,7 @@ Copycat analyzes your existing high-quality search ads (headlines, descriptions,
 
 ## Getting Started
 
-Explore Copycat with these Colab notebooks:
+There are three ways you can get started with Copycat:
 
 * **`copycat_ui_demo.ipynb`:**  A user-friendly graphical interface, ideal for non-technical users and initial exploration.
     * Open in [Colab](https://colab.research.google.com/github/google-marketing-solutions/copycat/blob/main/copycat_ui_demo.ipynb)
@@ -50,6 +50,9 @@ Explore Copycat with these Colab notebooks:
 * **`copycat_demo.ipynb`:** A Python-based quick start example for users who want to integrate Copycat into other tools or build upon its functionality.
     * Open in [Colab](https://colab.research.google.com/github/google-marketing-solutions/copycat/blob/main/copycat_demo.ipynb)
     * View in [Github](https://github.com/google-marketing-solutions/copycat/blob/main/copycat_demo.ipynb)
+
+* **`Copycat on Sheets`:** Copycat on sheets is a separate git repository which allows you to deploy Copycat with Google Cloud Run Functions and then use it directly from a Google Sheet. Provides the smoothest user experience once it is set up, including easy methods to pull data from Google Ads, but requires some effort for the first setup and provides a limited subset of the Copycat functionality.
+    * Go to the [Github](https://github.com/google-marketing-solutions/copycat_on_sheets) to get started
 
 **Prerequisites:**
 
