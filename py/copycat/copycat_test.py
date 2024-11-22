@@ -1069,7 +1069,7 @@ class CopycatTest(parameterized.TestCase):
                     " ident at line 1 column 2 [type=json_invalid,"
                     " input_value='not a json', input_type=str]\n    For"
                     " further information visit"
-                    " https://errors.pydantic.dev/2.6/v/json_invalid"
+                    " https://errors.pydantic.dev/2.7/v/json_invalid"
                 ],
                 warnings=[],
                 headlines_are_memorised=False if existing_headlines else None,
