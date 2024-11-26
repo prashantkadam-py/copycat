@@ -232,7 +232,7 @@ To cite this repository:
   author = {Sam Bailey, Piet Snel, Christiane Ahlheim, Sumedha Menon, Hector Parra, Jaime Martínez, Letizia Bertolaja},
   title = {Copycat: AI generated Google Search ad copy that matches your brand style},
   url = {https://github.com/google-marketing-solutions/copycat},
-  version = {0.0.3},
+  version = {0.0.4},
   year = {2024},
 }
 ```
