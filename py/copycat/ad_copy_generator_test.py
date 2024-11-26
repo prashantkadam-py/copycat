@@ -17,6 +17,7 @@ import textwrap
 from absl.testing import absltest
 from absl.testing import parameterized
 from vertexai import generative_models
+from vertexai import language_models
 import mock
 import pandas as pd
 import requests
@@ -90,9 +91,9 @@ class TextGenerationRequestTest(parameterized.TestCase):
     expected_markdown = textwrap.dedent(
         """\
       **Keywords:**
-      
+
       keyword 1, keyword 2
-      
+
       **Model Parameters:**
 
       Model name: gemini-1.5-flash-002
@@ -102,7 +103,7 @@ class TextGenerationRequestTest(parameterized.TestCase):
       Top K: 20
 
       Top P: 0.95
-      
+
       Safety settings: None
 
       **System instruction:**
@@ -598,6 +599,42 @@ class AdCopyVectorstoreTest(parameterized.TestCase):
     self.assertLen(embeddings[1], 256)
     self.assertLen(embeddings[2], 256)
 
+  def test_embed_documents_truncates_long_inputs(self):
+    training_data = pd.DataFrame.from_records([
+        {
+            "headlines": ["headline 1", "headline 2"],
+            "descriptions": ["description 1", "description 2"],
+            "keywords": "keyword 1, keyword 2",
+        },
+        {
+            "headlines": ["headline 3"],
+            "descriptions": ["description 3"],
+            "keywords": "keyword 3, keyword 4",
+        },
+    ])
+    ad_copy_vectorstore = (
+        ad_copy_generator.AdCopyVectorstore.create_from_pandas(
+            training_data=training_data,
+            embedding_model_name="text-embedding-004",
+            dimensionality=256,
+            max_initial_ads=100,
+            max_exemplar_ads=10,
+            affinity_preference=None,
+            embeddings_batch_size=10,
+            exemplar_selection_method="random",
+        )
+    )
+
+    ad_copy_vectorstore.embed_documents(["a" * 2001])
+    self.embedding_model_patcher.mock_embeddings_model.get_embeddings.assert_called_with(
+        [
+            language_models.TextEmbeddingInput(
+                "a" * 2000, task_type="RETRIEVAL_DOCUMENT"
+            )
+        ],
+        output_dimensionality=256,
+    )
+
   def test_embed_queries_embeds_queries_correctly(self):
     training_data = pd.DataFrame.from_records([
         {
@@ -631,6 +668,42 @@ class AdCopyVectorstoreTest(parameterized.TestCase):
     self.assertLen(embeddings[0], 256)
     self.assertLen(embeddings[1], 256)
     self.assertLen(embeddings[2], 256)
+
+  def test_embed_queries_truncates_long_inputs(self):
+    training_data = pd.DataFrame.from_records([
+        {
+            "headlines": ["headline 1", "headline 2"],
+            "descriptions": ["description 1", "description 2"],
+            "keywords": "keyword 1, keyword 2",
+        },
+        {
+            "headlines": ["headline 3"],
+            "descriptions": ["description 3"],
+            "keywords": "keyword 3, keyword 4",
+        },
+    ])
+    ad_copy_vectorstore = (
+        ad_copy_generator.AdCopyVectorstore.create_from_pandas(
+            training_data=training_data,
+            embedding_model_name="text-embedding-004",
+            dimensionality=256,
+            max_initial_ads=100,
+            max_exemplar_ads=10,
+            affinity_preference=None,
+            embeddings_batch_size=10,
+            exemplar_selection_method="random",
+        )
+    )
+
+    ad_copy_vectorstore.embed_queries(["a" * 2001])
+    self.embedding_model_patcher.mock_embeddings_model.get_embeddings.assert_called_with(
+        [
+            language_models.TextEmbeddingInput(
+                "a" * 2000, task_type="RETRIEVAL_QUERY"
+            )
+        ],
+        output_dimensionality=256,
+    )
 
 
 class AdCopyGeneratorTest(parameterized.TestCase):

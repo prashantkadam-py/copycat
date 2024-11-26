@@ -40,6 +40,13 @@ LOGGER = logging.getLogger(__name__)
 LOGGER.setLevel(logging.INFO)
 
 
+# Text embedding models are limited to 2048 tokens. See:
+# https://cloud.google.com/vertex-ai/generative-ai/docs/embeddings/get-text-embeddings
+# Here we limit to 2000 characters to be safe without needing to calculate the \
+# token count.
+MAX_CHARACTERS_PER_TEXT_EMBEDDING = 2000
+
+
 class TqdmLogger:
   """File-like class redirecting tqdm progress bar to LOGGER."""
 
@@ -256,9 +263,25 @@ class AdCopyVectorstore:
     return embeddings
 
   def embed_documents(self, texts: list[str]) -> list[list[float]]:
-    """Generates embeddings for the provided texts."""
+    """Generates document embeddings for the provided texts.
+
+    If the text is longer than 2000 characters, it is truncated to 2000
+    characters.
+
+    Args:
+      texts: The texts to generate embeddings for.
+
+    Returns:
+      The generated embeddings.
+    """
+    truncated_texts = [
+        text[:MAX_CHARACTERS_PER_TEXT_EMBEDDING]
+        if len(text) > MAX_CHARACTERS_PER_TEXT_EMBEDDING
+        else text
+        for text in texts
+    ]
     return self._generate_embeddings(
-        texts,
+        truncated_texts,
         embedding_model_name=self.embedding_model_name,
         dimensionality=self.dimensionality,
         batch_size=self.embeddings_batch_size,
@@ -267,9 +290,25 @@ class AdCopyVectorstore:
     )
 
   def embed_queries(self, texts: list[str]) -> list[list[float]]:
-    """Generates embeddings for the provided texts."""
+    """Generates query embeddings for the provided texts.
+
+    If the text is longer than 2000 characters, it is truncated to 2000
+    characters.
+
+    Args:
+      texts: The texts to generate embeddings for.
+
+    Returns:
+      The generated embeddings.
+    """
+    truncated_texts = [
+        text[:MAX_CHARACTERS_PER_TEXT_EMBEDDING]
+        if len(text) > MAX_CHARACTERS_PER_TEXT_EMBEDDING
+        else text
+        for text in texts
+    ]
     return self._generate_embeddings(
-        texts,
+        truncated_texts,
         embedding_model_name=self.embedding_model_name,
         dimensionality=self.dimensionality,
         batch_size=self.embeddings_batch_size,
