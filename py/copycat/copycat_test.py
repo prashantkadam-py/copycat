@@ -13,12 +13,13 @@
 # limitations under the License.
 
 import json
-import keyword
 
 from absl.testing import absltest
 from absl.testing import parameterized
 from vertexai import generative_models
+import mock
 import pandas as pd
+import pydantic
 
 from copycat import copycat
 from copycat import google_ads
@@ -1038,17 +1039,27 @@ class CopycatTest(parameterized.TestCase):
         vectorstore_exemplar_selection_method="random",
     )
 
-    response = copycat_instance.generate_new_ad_copy(
-        keywords=["my keyword 1, my keyword 2"],
-        style_guide="This is my style guide.",
-        num_in_context_examples=2,
-        system_instruction_kwargs=dict(
-            company_name="My company",
-            language="english",
-        ),
-        existing_headlines=[existing_headlines],
-        existing_descriptions=[existing_descriptions],
-    )[0]
+    with mock.patch.object(
+        google_ads.GoogleAd, "model_validate_json"
+    ) as mock_model_validate_json:
+
+      def raise_validation_error(self, *args, **kwargs):
+        # Mocking the validation error because otherwise the error message
+        # changes every time the pydantic version is updated.
+        raise pydantic.ValidationError("Mock validation error.", [])
+
+      mock_model_validate_json.side_effect = raise_validation_error
+      response = copycat_instance.generate_new_ad_copy(
+          keywords=["my keyword 1, my keyword 2"],
+          style_guide="This is my style guide.",
+          num_in_context_examples=2,
+          system_instruction_kwargs=dict(
+              company_name="My company",
+              language="english",
+          ),
+          existing_headlines=[existing_headlines],
+          existing_descriptions=[existing_descriptions],
+      )[0]
 
     # I don't want to test the similarity metrics here, so I'm just setting
     # them to None.
@@ -1064,13 +1075,7 @@ class CopycatTest(parameterized.TestCase):
                 descriptions=existing_descriptions or [],
             ),
             evaluation_results=copycat.EvaluationResults(
-                errors=[
-                    "1 validation error for GoogleAd\n  Invalid JSON: expected"
-                    " ident at line 1 column 2 [type=json_invalid,"
-                    " input_value='not a json', input_type=str]\n    For"
-                    " further information visit"
-                    " https://errors.pydantic.dev/2.7/v/json_invalid"
-                ],
+                errors=["0 validation errors for Mock validation error.\n"],
                 warnings=[],
                 headlines_are_memorised=False if existing_headlines else None,
                 descriptions_are_memorised=False
