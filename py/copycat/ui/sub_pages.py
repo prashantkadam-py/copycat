@@ -52,7 +52,6 @@ class SubPages(dict):
         nav_icon=nav_icon,
     )
 
-  @me.content_component
   def navigation_button(self, url: str):
     """Renders the navigation button for a sub page.
 
@@ -90,8 +89,7 @@ class SubPages(dict):
       ):
         with components.header_section():
           for i, url in enumerate(self.keys()):
-            with self.navigation_button(url):
-              pass
+            self.navigation_button(url)
             if i < (len(self.keys()) - 1):
               me.icon(
                   "arrow_forward_ios",
