@@ -107,14 +107,13 @@ def _explode_to_columns(
   """
 
   def apply_explode_to_columns(list_col: list[Any]) -> pd.Series:
-    nonlocal max_columns
-    nonlocal output_name
-    if max_columns is None:
-      max_columns = len(list_col)
-    elif len(list_col) > max_columns:
+    max_columns_ = max_columns
+    if max_columns_ is None:
+      max_columns_ = len(list_col)
+    elif len(list_col) > max_columns_:
       raise ValueError(
           "The input to the explode_to_columns function must be a list of"
-          f" length {max_columns} or less, got {len(list_col)} instead."
+          f" length {max_columns_} or less, got {len(list_col)} instead."
       )
 
     if not isinstance(list_col, list):
@@ -123,8 +122,8 @@ def _explode_to_columns(
           f" {type(list_col)} instead."
       )
     return pd.Series(
-        list_col + ["--" for _ in range(max_columns - len(list_col))],
-        index=[f"{output_name} {i+1}" for i in range(max_columns)],
+        list_col + ["--" for _ in range(max_columns_ - len(list_col))],
+        index=[f"{output_name} {i+1}" for i in range(max_columns_)],
     )
 
   return apply_explode_to_columns
