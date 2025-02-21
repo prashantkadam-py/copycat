@@ -65,6 +65,18 @@ def style_guide():
                     label="Gemini 1.5 Pro",
                     value=copycat.ModelName.GEMINI_1_5_PRO.value,
                 ),
+                me.RadioOption(
+                    label="Gemini 2.0 Flash",
+                    value=copycat.ModelName.GEMINI_2_0_FLASH.value,
+                ),
+                me.RadioOption(
+                    label="Gemini 2.0 Pro",
+                    value=copycat.ModelName.GEMINI_2_0_PRO.value,
+                ),
+                me.RadioOption(
+                    label="Gemini 2.0 Flash Thinking",
+                    value=copycat.ModelName.GEMINI_2_0_FLASH_THINKING.value,
+                ),
             ],
             value=params.style_guide_chat_model_name,
             style=me.Style(margin=me.Margin(bottom=15)),
@@ -121,7 +133,7 @@ def style_guide():
           )
         me.text(
             "Google Cloud Bucket URI containing supplementary materials"
-            " (optional):",
+            " (optional, do not use with Gemini 2.0 Flash Thinking):",
             style=me.Style(margin=me.Margin(bottom=15)),
         )
 

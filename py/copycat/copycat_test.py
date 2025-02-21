@@ -664,7 +664,7 @@ class CopycatTest(parameterized.TestCase):
         keywords=keywords,
         prompt=expected_prompt,
         system_instruction="Example system instruction",
-        chat_model_name=copycat.ModelName.GEMINI_1_5_FLASH,
+        chat_model_name=copycat.ModelName.GEMINI_2_0_FLASH,
         temperature=0.95,
         top_k=20,
         top_p=0.95,

@@ -89,10 +89,15 @@ class ModelName(enum.Enum):
   GEMINI_1_5_FLASH_001 = "gemini-1.5-flash-001"
   GEMINI_1_5_FLASH_002 = "gemini-1.5-flash-002"
   GEMINI_1_5_FLASH = "gemini-1.5-flash-002"
+  GEMINI_2_0_FLASH = "gemini-2.0-flash-001"
+  GEMINI_2_0_PRO = "gemini-2.0-pro-exp-02-05"
+  GEMINI_2_0_FLASH_LITE = "gemini-2.0-flash-001"
+  GEMINI_2_0_FLASH_THINKING = "gemini-2.0-flash-thinking-exp-01-21"
 
 
 class EmbeddingModelName(enum.Enum):
-  TEXT_EMBEDDING = "text-embedding-004"
+  TEXT_EMBEDDING = "text-embedding-005"
+  TEXT_EMBEDDING_004 = "text-embedding-004"
   TEXT_MULTILINGUAL_EMBEDDING = "text-multilingual-embedding-002"
 
 
