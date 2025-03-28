@@ -79,7 +79,8 @@ class KeywordOrganiserTest(parameterized.TestCase):
   ):
     clusterer = keyword_organiser.BirchAgglomerativeKeywordClusterer()
     with mock.patch(
-        "sklearn.cluster.AgglomerativeClustering"
+        "sklearn.cluster.AgglomerativeClustering",
+        spec=cluster.AgglomerativeClustering
     ) as mock_agglomerative_clustering:
       mock_agglomerative_clustering.return_value.distances_ = np.array([
           1.0,
@@ -114,6 +115,7 @@ class KeywordOrganiserTest(parameterized.TestCase):
     )
     with mock.patch(
         "sklearn.cluster.AgglomerativeClustering",
+        spec=cluster.AgglomerativeClustering
     ) as mock_agglomerative_clustering:
       clusterer.predict(self.test_keyword_embeddings)
       mock_agglomerative_clustering.assert_called_once_with(
