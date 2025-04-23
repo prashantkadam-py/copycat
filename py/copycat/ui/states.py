@@ -82,7 +82,7 @@ class CopycatParamsState:
   min_ad_strength: str = "POOR"
 
   style_guide_chat_model_name: str = (
-      ad_copy_generator.ModelName.GEMINI_2_0_PRO.value
+      ad_copy_generator.ModelName.GEMINI_2_5_PRO.value
   )
   style_guide_temperature: float = 0.95
   style_guide_top_k: int = 40

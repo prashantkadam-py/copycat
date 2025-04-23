@@ -70,8 +70,8 @@ def style_guide():
                     value=copycat.ModelName.GEMINI_2_0_FLASH.value,
                 ),
                 me.RadioOption(
-                    label="Gemini 2.0 Pro",
-                    value=copycat.ModelName.GEMINI_2_0_PRO.value,
+                    label="Gemini 2.5 Pro",
+                    value=copycat.ModelName.GEMINI_2_5_PRO.value,
                 ),
                 me.RadioOption(
                     label="Gemini 2.0 Flash Thinking",

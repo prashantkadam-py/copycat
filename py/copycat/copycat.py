@@ -937,7 +937,7 @@ class Copycat:
       company_name: str,
       files_uri: str = "",
       additional_style_instructions: str = "",
-      model_name: ModelName | str = ModelName.GEMINI_2_0_PRO,
+      model_name: ModelName | str = ModelName.GEMINI_2_5_PRO,
       safety_settings: ad_copy_generator.SafetySettingsType | None = None,
       temperature: float = 0.95,
       top_k: int = 20,
