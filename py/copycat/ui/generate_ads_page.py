@@ -56,7 +56,7 @@ def generation_settings_section(params: states.CopycatParamsState) -> None:
                 value=copycat.ModelName.GEMINI_2_0_FLASH.value,
             ),
             me.RadioOption(
-                label="Gemini 2.0 Pro",
+                label="Gemini 2.5 Pro",
                 value=copycat.ModelName.GEMINI_2_5_PRO.value,
             ),
             me.RadioOption(
