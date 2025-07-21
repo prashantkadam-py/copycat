@@ -96,7 +96,7 @@ class CopycatParamsState:
   new_ads_use_style_guide: bool = True
   new_ads_num_in_context_examples: int = 5
   new_ads_chat_model_name: str = (
-      ad_copy_generator.ModelName.GEMINI_2_0_FLASH.value
+      ad_copy_generator.ModelName.GEMINI_2_5_FLASH.value
   )
   new_ads_temperature: float = 0.95
   new_ads_top_k: int = 40

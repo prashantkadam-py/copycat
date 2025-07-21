@@ -70,12 +70,16 @@ def style_guide():
                     value=copycat.ModelName.GEMINI_2_0_FLASH.value,
                 ),
                 me.RadioOption(
+                    label="Gemini 2.0 Flash Lite",
+                    value=copycat.ModelName.GEMINI_2_0_FLASH_LITE.value,
+                ),
+                me.RadioOption(
                     label="Gemini 2.5 Pro",
                     value=copycat.ModelName.GEMINI_2_5_PRO.value,
                 ),
                 me.RadioOption(
-                    label="Gemini 2.0 Flash Thinking",
-                    value=copycat.ModelName.GEMINI_2_0_FLASH_THINKING.value,
+                    label="Gemini 2.5 Flash",
+                    value=copycat.ModelName.GEMINI_2_5_FLASH.value,
                 ),
             ],
             value=params.style_guide_chat_model_name,

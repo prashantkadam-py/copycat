@@ -56,12 +56,16 @@ def generation_settings_section(params: states.CopycatParamsState) -> None:
                 value=copycat.ModelName.GEMINI_2_0_FLASH.value,
             ),
             me.RadioOption(
+                label="Gemini 2.0 Flash Lite",
+                value=copycat.ModelName.GEMINI_2_0_FLASH_LITE.value,
+            ),
+            me.RadioOption(
                 label="Gemini 2.5 Pro",
                 value=copycat.ModelName.GEMINI_2_5_PRO.value,
             ),
             me.RadioOption(
-                label="Gemini 2.0 Flash Lite",
-                value=copycat.ModelName.GEMINI_2_0_FLASH_LITE.value,
+                label="Gemini 2.5 Flash",
+                value=copycat.ModelName.GEMINI_2_5_FLASH.value,
             ),
         ],
         value=params.new_ads_chat_model_name,

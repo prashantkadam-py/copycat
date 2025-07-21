@@ -186,7 +186,7 @@ class CopycatTest(parameterized.TestCase):
     })
     self.tmp_dir = self.create_tempdir()
 
-    self.model_name = "gemini-1.5-flash-002"
+    self.model_name = "gemini-1.5-flash"
 
     self.embedding_model_patcher = testing_utils.PatchEmbeddingsModel()
     self.embedding_model_patcher.start()
@@ -664,7 +664,7 @@ class CopycatTest(parameterized.TestCase):
         keywords=keywords,
         prompt=expected_prompt,
         system_instruction="Example system instruction",
-        chat_model_name=copycat.ModelName.GEMINI_2_0_FLASH,
+        chat_model_name=copycat.ModelName.GEMINI_2_5_FLASH,
         temperature=0.95,
         top_k=20,
         top_p=0.95,
@@ -787,7 +787,7 @@ class CopycatTest(parameterized.TestCase):
         copycat_instance.generate_style_guide(
             company_name="My company",
             additional_style_instructions="Some additional style instructions.",
-            model_name="gemini-1.5-flash-001",
+            model_name="gemini-1.5-flash",
             temperature=0.95,
             top_k=20,
             top_p=0.95,
@@ -873,7 +873,7 @@ class CopycatTest(parameterized.TestCase):
       copycat_instance.generate_style_guide(
           company_name="My company",
           additional_style_instructions="Some additional style instructions.",
-          model_name="gemini-1.5-flash-001",
+          model_name="gemini-1.5-flash",
           temperature=0.95,
           top_k=20,
           top_p=0.95,

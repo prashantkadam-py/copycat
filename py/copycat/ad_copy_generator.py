@@ -81,18 +81,12 @@ VECTORSTORE_AD_EXEMPLARS_FILE_NAME = "vectorstore_ad_exemplars.csv"
 
 class ModelName(enum.Enum):
   GEMINI_1_0_PRO = "gemini-pro"
-  GEMINI_1_5_PRO_PREVIEW = "gemini-1.5-pro-preview-0514"
-  GEMINI_1_5_PRO_001 = "gemini-1.5-pro-001"
-  GEMINI_1_5_PRO_002 = "gemini-1.5-pro-002"
-  GEMINI_1_5_PRO = "gemini-1.5-pro-002"
-  GEMINI_1_5_FLASH_PREVIEW = "gemini-1.5-flash-preview-0514"
-  GEMINI_1_5_FLASH_001 = "gemini-1.5-flash-001"
-  GEMINI_1_5_FLASH_002 = "gemini-1.5-flash-002"
-  GEMINI_1_5_FLASH = "gemini-1.5-flash-002"
-  GEMINI_2_0_FLASH = "gemini-2.0-flash-001"
-  GEMINI_2_5_PRO = "gemini-2.5-pro-preview-03-25"
-  GEMINI_2_0_FLASH_LITE = "gemini-2.0-flash-001"
-  GEMINI_2_0_FLASH_THINKING = "gemini-2.0-flash-thinking-exp-01-21"
+  GEMINI_1_5_PRO = "gemini-1.5-pro"
+  GEMINI_1_5_FLASH = "gemini-1.5-flash"
+  GEMINI_2_0_FLASH = "gemini-2.0-flash"
+  GEMINI_2_0_FLASH_LITE = "gemini-2.0-flash-lite"
+  GEMINI_2_5_PRO = "gemini-2.5-pro"
+  GEMINI_2_5_FLASH = "gemini-2.5-flash"
 
 
 class EmbeddingModelName(enum.Enum):

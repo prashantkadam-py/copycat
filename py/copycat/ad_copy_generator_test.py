@@ -96,7 +96,7 @@ class TextGenerationRequestTest(parameterized.TestCase):
 
       **Model Parameters:**
 
-      Model name: gemini-1.5-flash-002
+      Model name: gemini-1.5-flash
 
       Temperature: 0.95
 
@@ -183,7 +183,7 @@ class TextGenerationRequestTest(parameterized.TestCase):
 
       **Model Parameters:**
 
-      Model name: gemini-1.5-flash-002
+      Model name: gemini-1.5-flash
 
       Temperature: 0.95
 
@@ -1063,11 +1063,11 @@ class AdCopyGeneratorTest(parameterized.TestCase):
   @parameterized.parameters(
       (
           ad_copy_generator.ModelName.GEMINI_1_5_FLASH,
-          "gemini-1.5-flash-002",
+          "gemini-1.5-flash",
       ),
       (
           ad_copy_generator.ModelName.GEMINI_1_5_PRO,
-          "gemini-1.5-pro-002",
+          "gemini-1.5-pro",
       ),
   )
   @testing_utils.PatchGenerativeModel(response="Response text")
