@@ -1,0 +1,4 @@
+fastapi
+uvicorn[standard]
+copycat @ git+https://github.com/google-marketing-solutions/copycat.git
+
